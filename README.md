@@ -1,4 +1,4 @@
-MiniMax H3 ComfyUI Local Generator
+ComfyUI Long Movie Local Generator
 A single-file, offline HTML tool that builds ComfyUI workflow JSON for long, multi-scene videos with the MiniMax H3 model. Describe your scenes, set your options, and download a workflow you can drag straight into ComfyUI.
 There is nothing to install and no server to run. Open the HTML file in a browser, fill it in, and export.
 > **Status:** community project, not affiliated with MiniMax, Comfy, or Qwen. The generated workflows are built from example workflows for the H3 and Qwen Image 2.1 nodes. Test with a short 2-3 scene run before committing to a long render, and check the model filenames against your own install.
