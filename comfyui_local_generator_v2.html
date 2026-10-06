@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Minimax-H3 ComfyUI Local Workflow Generator</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#14161a;color:#d8dbe0;font:13px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:10px 16px;background:#1c1f25;border-bottom:1px solid #2c313a}
+header h1{margin:0;font-size:16px}header small{color:#8a93a0}
+.bar{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px;background:#1c1f25;border-bottom:1px solid #2c313a}
+button{background:#2b6cb0;color:#fff;border:0;border-radius:4px;padding:6px 10px;cursor:pointer;font:inherit}
+button.s{background:#3a404b}button:hover{filter:brightness(1.15)}
+main{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:14px;padding:14px 16px}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+section{background:#1c1f25;border:1px solid #2c313a;border-radius:6px;padding:10px;margin-bottom:12px}
+h2{margin:0 0 8px;font-size:13px;color:#9db4d0}
+label{display:block;margin:6px 0 2px;color:#a9b0bb}
+input,textarea,select{width:100%;background:#101216;color:#e6e8eb;border:1px solid #333a45;border-radius:4px;padding:5px;font:inherit}
+input[type=checkbox]{width:auto;margin-right:6px}
+textarea{resize:vertical;min-height:54px}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 10px}
+.cb{display:flex;align-items:center;margin-top:8px}.cb label{margin:0}
+.sc,.rc{border:1px solid #333a45;border-radius:5px;padding:8px;margin-bottom:8px;background:#171a1f}
+.sc b,.rc b{color:#9db4d0}.fr{color:#8fd19e;font-size:12px}
+.err{color:#ff8a8a}.wrn{color:#f0c674}.ok{color:#8fd19e}
+pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px ui-monospace,Consolas,monospace}
+#out{min-height:160px;font:11px ui-monospace,Consolas,monospace}
+.hid{display:none!important}
+.kx{display:none;margin-top:6px}body.kon .kx{display:block}
+</style></head><body>
+<header><h1>Minimax-H3 &rarr; ComfyUI workflow generator</h1>
+<small>100% offline &middot; RAM 192 GB &middot; VRAM 32 GB &middot; single local GPU &middot; emits ComfyUI frontend (UI) JSON only</small></header>
+<div class="bar">
+<button id="bAdd">Add Scene</button><button id="bRem" class="s">Remove Scene</button><button id="bEx" class="s">Load Example</button><button id="bTpl" class="s">Generate Template</button><button id="bUp" class="s">Upload Filled Template</button><input type="file" id="tplFile" accept=".json,.txt,application/json,text/plain" style="display:none"><span id="tplMsg" style="font-size:12px;margin-left:8px"></span>
+<button id="bGen">Generate Workflow JSON</button><button id="bCopy">Copy Workflow JSON</button><button id="bDl">Download Workflow JSON</button><button id="bClr" class="s">Clear JSON</button><span id="genMsg" style="font-size:12px;margin-left:8px"></span><button id="bPlan" class="s" style="display:none">Download Plan JSON</button><button id="bFF" class="s" style="display:none">Download ffmpeg script</button>
+</div>
+<main><div>
+<section><h2>Video and image engines</h2>
+<div class="g"><div><label>Image model</label><select id="ie"><option value="qwen">Qwen Image 2.1</option><option value="flux2">Flux 2</option><option value="zimage">Z-Image Turbo</option><option value="h3">Same as video model (MiniMax H3 still)</option></select></div><div><label>Video model</label><select id="ve"><option value="mm">MiniMax H3</option><option value="wan21">Wan 2.1</option><option value="wan22">Wan 2.2</option><option value="ltx23">LTX 2.3</option><option value="ltx25">LTX 2.5</option></select></div></div>
+<div class="g" data-img="qwen flux2 zimage">
+<div><label>Image diffusion model file</label><input id="qun" value="qwen_image_2.1_int8_convrot.safetensors"></div>
+<div><label>Image text encoder file</label><input id="qte" value="qwen3vl_8b_int8_convrot.safetensors"></div>
+<div><label>Image VAE file</label><input id="qvae" value="qwen_image_2.1_vae_bf16.safetensors"></div></div>
+<div data-img="qwen flux2 zimage"><label>Image LoRAs (one per line: filename | strength)</label><textarea id="ilr" style="min-height:40px" placeholder="my_style_lora.safetensors | 0.8"></textarea></div>
+<div class="g" data-eng="wan21 wan22">
+<div><label>Diffusion model file</label><input id="wm1" value="wan2.1_i2v_480p_14B_fp16.safetensors"></div>
+<div data-eng="wan22"><label>Low-noise diffusion model file</label><input id="wm2" value="wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors"></div>
+<div><label>Text encoder file</label><input id="wte" value="umt5_xxl_fp8_e4m3fn_scaled.safetensors"></div>
+<div><label>Video VAE file</label><input id="wvae" value="wan_2.1_vae.safetensors"></div>
+<div data-eng="wan21"><label>CLIP vision file</label><input id="wcv" value="clip_vision_h.safetensors"></div>
+<div><label>LoRA file</label><input id="wl1" value="lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"></div>
+<div data-eng="wan22"><label>Low-noise LoRA file</label><input id="wl2" value="wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"></div></div>
+<div class="g" data-eng="ltx23 ltx25">
+<div><label>Diffusion model file</label><input id="lun" value="ltx-2.3-22b-dev.safetensors"></div>
+<div><label>Text encoder file</label><input id="lt1" value="gemma_3_12B_it.safetensors"></div>
+<div><label>Text projection file</label><input id="lt2" value="ltx-2.3_text_projection_bf16.safetensors"></div>
+<div><label>Video VAE file</label><input id="lvae" value="LTX23_video_vae_bf16.safetensors"></div>
+<div><label>Audio VAE file</label><input id="lav" value="ltx-2.3-22b-dev.safetensors"></div>
+<div><label>LoRA file</label><input id="llo" value="ltx-2.3-22b-distilled-lora-384.safetensors"></div></div>
+</section>
+<section><h2>Prompts</h2>
+<label>1. Reference images (character / location / style sheets)</label><div id="refs"></div><div style="margin-top:6px"><button class="s" id="bRef">Add reference image</button> <button class="s" id="bRefRm">Remove last</button></div><div class="cb"><input type="checkbox" id="rfirst"><label for="rfirst">Use the first reference with a filename as the scene 1 first frame (when none is set)</label></div><div id="refHint" style="color:#ff9d5c;font-size:12px;margin-top:6px"></div>
+<label>2. Negative prompt</label><textarea id="neg">low quality, blurry, distorted faces, extra limbs, watermark, text, flickering, jitter, bad anatomy, oversaturated, noisy, artifacts</textarea></section>
+<section><h2>3. Scenes</h2><div id="scenes"></div></section>
+<section><h2>First frame, audio, LoRA</h2><div class="g">
+<div><label>4. First frame mode</label><select id="mode"><option>global_first_frame_scene1_only</option><option>per_scene_manual</option><option selected>last_frame_chain</option></select></div>
+<div><label>5. Global first frame filename</label><input id="gff" placeholder="optional.png"></div>
+<div data-eng="mm"><label>Scene 1 reference source</label><select id="rs"><option value="upload">Uploaded photo (filename at left)</option><option value="gen">Generate from text prompt</option></select></div>
+<div data-eng="mm"><label>Prompt for generated first frame (blank = main + scene 1)</label><textarea id="gp" style="min-height:40px"></textarea></div>
+<div><label>9. LoRA strength</label><input id="ls" type="number" value="0.75" min="0" max="2" step="0.05"></div>
+<div data-eng="mm"><label>10. Video VAE</label><select id="vae"><option>minimax_h3_video_vae_int8_convrot</option><option>minimax_h3_video_vae_fp16</option></select></div></div>
+<div class="cb" data-eng="mm ltx23 ltx25"><input type="checkbox" id="aud"><label for="aud">6. Audio enabled</label></div>
+<div class="cb"><input type="checkbox" id="lora"><label for="lora">7. LoRA enabled</label></div>
+<div class="cb"><input type="checkbox" id="turbo"><label for="turbo">8. Turbo 4-step mode</label></div></section>
+<section><h2>Consistency &amp; long-form options (each can be switched off)</h2>
+<div class="cb"><input type="checkbox" id="kf"><label for="kf">First + last keyframes per scene (N+1 shared keyframes from your image model)</label></div>
+<div class="g"><div><label>Keyframe filename pattern ({n} = 001, 002...)</label><input id="kfp" value="keyframe_{n}.png"></div>
+<div><label>Render scenes from</label><input id="rf" type="number" min="1" placeholder="1"></div><div><label>to</label><input id="rt" type="number" min="1" placeholder="last"></div></div>
+<div class="cb"><input type="checkbox" id="bib"><label for="bib">Inject consistency bible into every scene prompt</label></div>
+<label>Style line</label><textarea id="bst"></textarea>
+<label>Character bible (one per line: Name: look; voice)</label><textarea id="bch"></textarea>
+<label>Global sound-design line</label><input id="bsn">
+<div class="cb"><input type="checkbox" id="ext"><label for="ext">Dialogue by external TTS (H3 audio = ambience/effects only)</label></div>
+<div class="cb"><input type="checkbox" id="mu"><label for="mu">Generate one music track for the whole film (ACE-Step) and stop H3 making its own per-scene music</label></div>
+<label>Music prompt (genre, mood, instruments, tempo)</label><textarea id="mp"></textarea>
+<div class="g"><div><label>ACE-Step checkpoint</label><input id="mck" value="ace_step_v1_3.5b.safetensors"></div><div><label>Seconds per track (max 240)</label><input id="mseg" type="number" value="180"></div><div><label>Music volume in final mix (0-1)</label><input id="mvol" type="number" step="0.05" value="0.3"></div></div>
+<div class="cb"><input type="checkbox" id="nj"><label for="nj">Skip in-graph join (join with ffmpeg; saves RAM on long films)</label></div>
+<div class="cb"><input type="checkbox" id="exp"><label for="exp">Enable plan JSON + ffmpeg assemble script export</label></div>
+<div class="cb"><input type="checkbox" id="lk" checked><label for="lk">Force scenes to generate strictly in order (adds a hidden dependency link from each scene to the previous one)</label></div>
+<div class="cb"><input type="checkbox" id="sg" checked><label for="sg">Pack each scene into a subgraph node (far fewer nodes, keeps ComfyUI responsive on long films)</label></div></section>
+<section><h2>Reference images &amp; image generation</h2>
+<div class="cb" data-eng="mm"><input type="checkbox" id="rm"><label for="rm">Reference-to-video mode (MiniMaxH3ReferenceToVideo + ref2va model; every reference is linked as a &lt;Picture N&gt; input, no first/last frame)</label></div>
+<div class="g" data-eng="mm"><div><label>Ref2va diffusion model file</label><input id="un2" value="minimax_h3_ref2va_pruned_int8_convrot.safetensors"></div><div><label>Reference image fit (keeps the aspect ratio, never stretches)</label><select id="rfit"><option value="pad">Pad to video aspect (no stretching)</option><option value="crop">Center-crop to video aspect (no stretching)</option><option value="orig">Keep original size (uses ref_image_size below)</option></select></div><div><label>ref_image_size</label><select id="ris"><option>match</option><option>max</option></select></div></div>
+<div class="cb" data-eng="mm"><input type="checkbox" id="gc" checked><label for="gc">Pass the previous scene's last frame as &lt;Picture 1&gt; in reference mode (continuity between scenes)</label></div>
+<div class="cb"><input type="checkbox" id="rsel"><label for="rsel">Use the per-scene "Reference images for this scene" lists (off = every scene links every reference, including ones added later)</label></div>
+<div class="cb" data-eng="mm"><input type="checkbox" id="rauto"><label for="rauto">Only link references whose name appears in the scene prompt/dialogue (off = every scene gets all references)</label></div>
+<div class="g"><div><label>Reference image width</label><input id="rw" type="number" value="1024"></div><div><label>Reference image height</label><input id="rh" type="number" value="1024"></div><div data-img="qwen flux2 zimage"><label>Image steps</label><input id="rst" type="number" value="40"></div><div data-img="qwen flux2 zimage"><label>Image CFG / guidance</label><input id="rcfg" type="number" step="0.1" value="1"></div></div>
+<div class="cb"><input type="checkbox" id="rg"><label for="rg">Generate reference images in the workflow (uses the image engine above)</label></div>
+<div class="cb"><input type="checkbox" id="jf"><label for="jf">Generate scene first frames with the image engine above; scenes between anchors chain from the previous scene's last frame</label></div>
+<div class="g"><div><label>First-frame width</label><input id="kw" type="number" value="1280"></div><div><label>First-frame height</label><input id="kh" type="number" value="720"></div><div><label>Max reference inputs per first frame (0 = engine limit; extras are stitched into sheets, never dropped)</label><input id="jmax" type="number" min="0" value="0"></div><div><label>Re-anchor every N scenes (1 = every scene)</label><input id="jn" type="number" min="1" value="4"></div><div><label>Photoreal suffix for generated frames</label><input id="jsty" value="photorealistic cinematic film still, natural lighting, realistic skin texture"></div></div>
+<div class="cb" data-eng="mm"><input type="checkbox" id="jl"><label for="jl">Use the next scene's first frame as this scene's last frame (continuous shots; ignored on hard cuts)</label></div></section>
+<section><h2>Video and sampling</h2><div class="g">
+<div data-eng="mm"><label>Resolution (multiples of 32)</label><select id="res"><option value="512x288">512 x 288 (current default, 16:9)</option><optgroup label="16:9 landscape (official table)"><option value="608x352">608 x 352 (0.2 MP)</option><option value="736x416">736 x 416 (0.3 MP)</option><option value="864x480">864 x 480 (0.4 MP)</option><option value="960x544">960 x 544 (0.5 MP)</option><option value="1056x608">1056 x 608 (0.6 MP)</option><option value="1152x640">1152 x 640 (0.7 MP)</option><option value="1216x672">1216 x 672 (0.8 MP)</option><option value="1280x736">1280 x 736 (0.9 MP)</option><option value="1344x768">1344 x 768 (0.98 MP, official 768p)</option></optgroup><optgroup label="9:16 portrait"><option value="352x608">352 x 608 (0.2 MP)</option><option value="416x736">416 x 736 (0.3 MP)</option><option value="480x864">480 x 864 (0.4 MP)</option><option value="544x960">544 x 960 (0.5 MP)</option><option value="608x1056">608 x 1056 (0.6 MP)</option><option value="640x1152">640 x 1152 (0.7 MP)</option><option value="672x1216">672 x 1216 (0.8 MP)</option><option value="736x1280">736 x 1280 (0.9 MP)</option><option value="768x1344">768 x 1344 (0.98 MP)</option></optgroup><optgroup label="1:1 square"><option value="448x448">448 x 448 (0.2 MP)</option><option value="544x544">544 x 544 (0.3 MP)</option><option value="640x640">640 x 640 (0.4 MP)</option><option value="704x704">704 x 704 (0.5 MP)</option><option value="768x768">768 x 768 (0.6 MP)</option><option value="832x832">832 x 832 (0.7 MP)</option><option value="896x896">896 x 896 (0.8 MP)</option><option value="960x960">960 x 960 (0.9 MP)</option><option value="992x992">992 x 992 (0.98 MP)</option></optgroup><optgroup label="4:3"><option value="512x384">512 x 384 (0.2 MP)</option><option value="640x480">640 x 480 (0.3 MP)</option><option value="736x544">736 x 544 (0.4 MP)</option><option value="832x640">832 x 640 (0.5 MP)</option><option value="896x672">896 x 672 (0.6 MP)</option><option value="960x704">960 x 704 (0.7 MP)</option><option value="1024x768">1024 x 768 (0.8 MP)</option><option value="1088x832">1088 x 832 (0.9 MP)</option><option value="1152x864">1152 x 864 (0.98 MP)</option></optgroup><optgroup label="3:4"><option value="384x512">384 x 512 (0.2 MP)</option><option value="480x640">480 x 640 (0.3 MP)</option><option value="544x736">544 x 736 (0.4 MP)</option><option value="608x800">608 x 800 (0.5 MP)</option><option value="672x896">672 x 896 (0.6 MP)</option><option value="736x992">736 x 992 (0.7 MP)</option><option value="768x1024">768 x 1024 (0.8 MP)</option><option value="832x1120">832 x 1120 (0.9 MP)</option><option value="864x1152">864 x 1152 (0.98 MP)</option></optgroup><optgroup label="21:9 ultrawide"><option value="672x288">672 x 288 (0.2 MP)</option><option value="832x352">832 x 352 (0.3 MP)</option><option value="960x416">960 x 416 (0.4 MP)</option><option value="1088x480">1088 x 480 (0.5 MP)</option><option value="1184x512">1184 x 512 (0.6 MP)</option><option value="1280x544">1280 x 544 (0.7 MP)</option><option value="1376x576">1376 x 576 (0.8 MP)</option><option value="1440x608">1440 x 608 (0.9 MP)</option><option value="1504x640">1504 x 640 (0.98 MP)</option></optgroup><option value="custom">Custom (enter width and height)</option></select></div>
+<div id="wW"><label>11. Width</label><input id="w" type="number" value="512"></div>
+<div id="hW"><label>12. Height</label><input id="h" type="number" value="288"></div>
+<div><label>13. FPS</label><input id="fps" type="number" value="24"></div>
+<div><label>14. Default scene duration (s)</label><input id="dd" type="number" value="15"></div>
+<div><label>15. Optional duration warning threshold (s, blank = none)</label><input id="mx" type="number" value="" placeholder="no limit"></div>
+<div><label>16. Steps</label><input id="steps" type="number"></div>
+<div><label>17. CFG</label><input id="cfg" type="number" step="0.1"></div>
+<div><label>18. Sampler</label><select id="smp"><option>euler</option><option>euler_cfg_pp</option><option>euler_ancestral</option><option>euler_ancestral_cfg_pp</option><option>heun</option><option>heunpp2</option><option>dpm_2</option><option>dpm_2_ancestral</option><option>lms</option><option>dpm_fast</option><option>dpm_adaptive</option><option>dpmpp_2s_ancestral</option><option>dpmpp_sde</option><option>dpmpp_2m</option><option>dpmpp_2m_cfg_pp</option><option>dpmpp_2m_sde</option><option>dpmpp_3m_sde</option><option>ddpm</option><option>lcm</option><option>ipndm</option><option>ipndm_v</option><option>deis</option><option selected>res_multistep</option><option>res_multistep_cfg_pp</option><option>res_multistep_ancestral</option><option>gradient_estimation</option><option>er_sde</option><option>seeds_2</option><option>seeds_3</option><option>sa_solver</option><option>ddim</option><option>uni_pc</option><option>uni_pc_bh2</option></select></div>
+<div><label>19. Scheduler</label><select id="sch"><option selected>simple</option><option>sgm_uniform</option><option>karras</option><option>exponential</option><option>ddim_uniform</option><option>beta</option><option>normal</option><option>linear_quadratic</option><option>kl_optimal</option></select></div>
+<div><label>Denoise (0-1)</label><input id="dn" type="text" inputmode="decimal" value="1.0"></div>
+<div><label>20. Seed mode</label><select id="sm"><option>same_seed_for_all_scenes</option><option>random_seed_per_scene</option></select></div>
+<div><label>21. Base seed</label><input id="bs" type="number" value="-1"></div>
+<div><label>22. Batch size</label><input id="bat" type="number" value="1" min="1"></div>
+<div data-eng="mm"><label>Text encoder file (needs 5120-dim, the 32B)</label><input id="te" value="qwen3vl_32b_heretic_minimax_h3_nvfp4.safetensors"></div>
+<div data-eng="mm"><label>Diffusion model file</label><input id="un" value="minimax_h3_fl2va_bf16.safetensors"></div>
+<div><label>24. Final output filename</label><input id="fin" value="minimax_h3_final_video.mp4"></div></div>
+<div class="cb" data-eng="mm"><input type="checkbox" id="ec" checked><label for="ec">EasyCache (speeds up sampling)</label></div>
+<div class="cb" data-eng="mm"><input type="checkbox" id="sage" checked><label for="sage">Sage Attention (needs KJNodes + sageattention installed)</label></div>
+<div class="cb"><input type="checkbox" id="sv" checked><label for="sv">Save individual scene MP4s (previews only, never the final result)</label></div></section>
+<section><h2>Long-film quality (stops detail loss between scenes)</h2>
+<div class="cb"><input type="checkbox" id="rfs"><label for="rfs">Sharpen each chained frame before the next scene starts</label></div>
+<div class="g"><div><label>Sharpen strength (0-1)</label><input id="rsa" type="number" min="0" max="1" step="0.05" value="0.4"></div></div>
+<div class="cb"><input type="checkbox" id="rfu"><label for="rfu">Upscale-model round trip on each chained frame (uses the upscale model file in the Upscale section)</label></div>
+<div class="cb" data-img="qwen flux2 zimage"><input type="checkbox" id="rfi"><label for="rfi">Refresh each chained frame with the image model (img2img, restores clean detail and keeps references)</label></div>
+<div class="g" data-img="qwen flux2 zimage"><div><label>Refresh strength (denoise 0-1, lower keeps more of the frame)</label><input id="rfd" type="number" min="0.05" max="1" step="0.05" value="0.3"></div></div>
+<label>Continuation prompt (added to every scene that starts from a previous frame)</label><textarea id="ctp">Continue seamlessly from the supplied first frame. Preserve the same character, clothing, environment, lighting, camera language and audio. No reset, no cut, no fade. Keep the image sharp, clean and highly detailed; no blur, no compression artifacts.</textarea>
+<small style="color:#8a93a0">Tip: also lower "Re-anchor every N scenes" (2 to 4 is best) so a clean image-model frame restarts the chain, and render at 0.5 MP or higher without Turbo for final output.</small></section>
+<section><h2>Upscale</h2><div class="cb"><input type="checkbox" id="up"><label for="up">Upscale video (adds an upscale model node to every scene)</label></div><div class="g"><div><label>Upscale model file</label><input id="upm" value="RealESRGAN_x2plus.pth"></div><div><label>Upscale model native scale</label><input id="ups" type="number" min="1" step="1" value="2"></div><div><label>Final scale vs generated size</label><input id="upf" type="number" min="1" step="0.25" value="2"></div></div></section>
+</div><div>
+<section><h2>Preview</h2><pre id="pv"></pre></section>
+<section><h2>Workflow JSON <button id="bCopy2" style="float:right">Copy</button><button id="bClr2" class="s" style="float:right;margin-right:6px">Clear</button></h2><textarea id="out" readonly></textarea></section>
+</div></main>
+<script>
+(function(){
+"use strict";
+const $=i=>document.getElementById(i);
+const DESC={LoraLoaderModelOnly:"ComfyUI core LoRA loader; NOT present in the reference workflow, verify it loads the turbo LoRA"};
+let cnt=0;
+function addScene(p,d,f,s){
+ cnt++;const c=document.createElement("div");c.className="sc";
+ c.innerHTML='<b></b><label>Scene prompt</label><textarea class="sp"></textarea><div class="g"><div><label>Duration (s)</label><input class="sd" type="number" step="0.5"></div><div><label>First frame filename (optional)</label><input class="sf"></div><div><label>Seed (empty = inherit)</label><input class="ss" type="number"></div></div><div class="kx"><div class="g"><div><label>Last frame filename (optional)</label><input class="sl"></div><div class="cb"><input type="checkbox" class="sk"><label>Hard cut before this scene</label></div></div><label>Dialogue (one per line, Speaker: line)</label><textarea class="sdl"></textarea><label>Scene sound design (optional)</label><input class="ssn"><label>Reference images for this scene (numbers or names; blank = auto)</label><input class="srr"></div><div class="fr"></div>';
+ c.querySelector(".sp").value=p||"";c.querySelector(".sd").value=d||$("dd").value||15;
+ c.querySelector(".sf").value=f||"";c.querySelector(".ss").value=s==null?"":s;
+ $("scenes").appendChild(c);renum();
+}
+function renum(){[...document.querySelectorAll(".sc")].forEach((c,i)=>c.querySelector("b").textContent="Scene "+(i+1));}
+function scenes(){return [...document.querySelectorAll(".sc")].map(c=>({p:c.querySelector(".sp").value.trim(),d:parseFloat(c.querySelector(".sd").value),f:c.querySelector(".sf").value.trim(),s:c.querySelector(".ss").value.trim(),l:c.querySelector(".sl").value.trim(),k:c.querySelector(".sk").checked,dl:c.querySelector(".sdl").value.trim(),sn:c.querySelector(".ssn").value.trim(),rr:c.querySelector(".srr").value.trim(),el:c}));}
+function autofill(){
+ const t=$("turbo").checked;
+ const v=$("ve").value,st=v==="mm"||v.startsWith("wan")?(t?4:20):(t?8:20),cf=t?1.0:(v==="mm"?5.0:(v==="wan21"?6.0:(v==="wan22"?3.5:3.0)));
+ $("steps").value=st;$("cfg").value=cf;
+}
+function vl(sec,fps){const v=$("ve").value,r=Math.max(5,Math.round(sec*fps));if(v==="mm")return 17*Math.ceil((r-5)/17)+5;if(v.startsWith("wan"))return 4*Math.ceil((r-1)/4)+1;return 8*Math.ceil((r-1)/8)+1;}
+function build(){
+ const E=[],W=[],S0=scenes(),w=+$("w").value,h=+$("h").value,fps=+$("fps").value;
+ const VE=$("ve").value,MMV=VE==="mm",FAM=MMV?"mm":(VE.startsWith("wan")?"wan":"ltx"),VEN={mm:"MiniMax H3",wan21:"Wan 2.1",wan22:"Wan 2.2",ltx23:"LTX 2.3",ltx25:"LTX 2.5"}[VE];
+ const mode=$("mode").value,aud=$("aud").checked&&FAM!=="wan",lora=$("lora").checked,turbo=$("turbo").checked;
+ const g=$("gff").value.trim()||refFirst(),main="",mxv=$("mx").value.trim();
+ const JF=$("jf").checked,RM=$("rm").checked&&MMV,MU=$("mu").checked,GC=$("gc").checked,JN=Math.max(1,parseInt($("jn").value,10)||1),kfOn=$("kf").checked&&!RM&&!JF,bib=$("bib").checked,ext=$("ext").checked,nj=$("nj").checked,UP=$("up").checked;
+ const kn=n=>($("kfp").value.trim()||"keyframe_{n}.png").replace("{n}",String(n).padStart(3,"0"));
+ let kc=1;S0.forEach((s,i)=>{s.gi=i;if(!kfOn)return;const cut=i===0||s.k;s.sf=s.f||(cut?kn(kc++):S0[i-1].lf);s.lf=s.l||kn(kc++);});
+ const rf=parseInt($("rf").value,10)||1,rt=parseInt($("rt").value,10)||S0.length;
+ const S=S0.filter((s,i)=>i+1>=rf&&i+1<=rt);
+ if(!S.length)E.push("Scene range selects no scenes.");
+ const chars=$("bch").value.split("\n").map(x=>x.trim()).filter(Boolean).concat(refs().filter(r=>r.n&&r.d).map(r=>r.n+": "+r.d));
+ const compose=s=>{let b=main&&s.p?main+". "+s.p:(main||s.p),x=[];
+  if(bib){const st=$("bst").value.trim();if(st)x.push("Style: "+st);
+   const hay=(s.p+" "+s.dl).toLowerCase(),m=chars.filter(c=>hay.includes(c.split(":")[0].trim().toLowerCase()));
+   (m.length?m:chars).forEach(c=>x.push("Character "+c));
+   const gs=$("bsn").value.trim();if(gs)x.push("Sound: "+gs);}
+  if(s.sn)x.push("Scene sound: "+s.sn);
+  if(aud){if(ext)x.push("No spoken dialogue, no speech; "+(MU?"ambience and effects only, no music":"ambience, effects and music only"));else s.dl.split("\n").map(l=>l.trim()).filter(Boolean).forEach(l=>x.push("Spoken line, "+l));}
+  if(aud&&MU&&!ext)x.push("No background music; ambience and effects only");
+  return x.length?b+". "+x.join(". ")+".":b;};
+ const fin=($("fin").value.trim()||"minimax_h3_final_video.mp4"),base=fin.replace(/\.mp4$/i,"");
+ const dnr=$("dn").value.trim(),dnv=dnr===""?1:parseFloat(dnr);
+ if(!(dnv>0&&dnv<=1))E.push("Denoise must be a number above 0 and up to 1.");
+ if(S.length<1)E.push("At least 1 scene is required.");
+ if(!main&&!S.some(s=>s.p))E.push("All prompts are empty: fill at least one scene prompt.");
+ if(!(w>0))E.push("Width must be > 0.");if(!(h>0))E.push("Height must be > 0.");if(!(fps>0))E.push("FPS must be > 0.");
+ S.forEach((s,i)=>{if(!(s.d>0))E.push("Scene "+(i+1)+": duration must be > 0.");
+  s.fr=vl(s.d||0,fps);s.el.querySelector(".fr").textContent="Valid "+(MMV?"H3 frame count (17k+5)":(FAM==="wan"?"Wan frame count (4k+1)":"LTX frame count (8k+1)"))+" at "+fps+" fps: "+s.fr+(kfOn?" | keyframes: "+s.sf+" -> "+s.lf:"");
+  s.c=compose(s);});
+ const total=S.reduce((a,s)=>a+(s.d||0),0),frames=S.reduce((a,s)=>a+(s.fr||0),0);
+ if(mxv!==""&&total>+mxv)W.push("Total duration "+total+"s is above your warning threshold of "+mxv+"s (not blocking).");
+ if(w%16||h%16)W.push("Width/height not divisible by 16.");
+ if(!nj){const gb=frames*w*h*12/1e9;if(gb>40)W.push("In-graph join holds ~"+Math.round(gb)+" GB of float frames (plus copies). Tick option D and join with ffmpeg.");}
+ if(!$("rm").checked&&refs().some(r=>r.f))W.push("Reference images are NOT linked to MiniMax in this mode: the first-frame model has no reference inputs. Tick 'Reference-to-video mode' to link them as <Picture N>.");
+ if(kfOn)W.push("Keyframes ON: "+(kc-1)+" images ("+kn(1)+" ... "+kn(kc-1)+" unless overridden) must be in ComfyUI/input. Last frame feeds H3's last_frame input; first-frame mode and generated reference are ignored.");
+ if(turbo&&!lora)W.push("turbo LoRA may be required for 4-step sampling");
+ if(+$("bat").value>1)W.push("Batch size ignored: MiniMaxH3ImageToVideo has no batch widget.");
+ if(/8b/i.test($("te").value))W.push("An 8B Qwen3-VL encoder outputs 4096-dim embeddings; the H3 model needs 5120-dim (32B encoder). Expect a mat1/mat2 shape error.");
+ if($("rs").value==="gen")W.push("Generated first frame = frame 0 of a 5-frame H3 text-to-video clip (no separate image model is wired). Check the Preview node; re-run until you like it.");
+ W.push("Negative prompt and CFG are not wired: the reference graph uses BasicGuider (no CFG).");
+ if(mode==="last_frame_chain"&&aud)W.push("Chain trims 1 duplicate frame per join; audio is not trimmed (same as the reference graph).");
+ let nid=0,lid=0;const nodes=[],links=[],ph={};
+ const N=(type,title,x,y,wv,ins,outs)=>{const n={id:++nid,type:type,pos:[x,y],size:[300,120],flags:{},order:nid-1,mode:0,
+  inputs:ins.map(a=>Object.assign({name:a[0],type:a[1],link:null},a[2]||{})),
+  outputs:outs.map((a,i)=>({name:a[0],type:a[1],links:[],slot_index:i})),title:title,
+  properties:{"Node name for S&R":type},widgets_values:wv};
+  nodes.push(n);if(DESC[type])ph[type]=DESC[type];return n;};
+ const L=(a,as,b,bs)=>{const id=++lid;links.push([id,a.id,as,b.id,bs,a.outputs[as].type]);a.outputs[as].links.push(id);b.inputs[bs].link=id;};
+ const X=".safetensors",M=["model","MODEL"],V=["vae","VAE"],WI=k=>[k,"INT",{widget:{name:k}}];
+ const un=!MMV?null:N("UNETLoader","UNET",-2200,100,[(RM?$("un2").value.trim():$("un").value.trim()),"default"],[],[["MODEL","MODEL"]]);
+ const ck=!MMV?null:N("CLIPLoader","CLIP",-2200,300,[$("te").value.trim(),"minimax","default"],[],[["CLIP","CLIP"]]);
+ const vv=!MMV?null:N("VAELoader","Video VAE",-2200,500,[$("vae").value+X],[],[["VAE","VAE"]]);
+ const av=MMV&&(aud||RM)?N("VAELoader","Audio VAE",-2200,700,["minimax_h3_audio_vae_fp32"+X],[],[["VAE","VAE"]]):null;
+ let m=un;
+ if(lora&&MMV){const lo=N("LoraLoaderModelOnly","Turbo LoRA",-1950,-250,[(RM?"minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16":"minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy")+X,+$("ls").value],[M],[["MODEL","MODEL"]]);L(m,0,lo,0);m=lo;}
+ let fm=m;
+ if(MMV&&$("ec").checked){const ec=N("EasyCache","EasyCache",-1700,-100,[0.3,0.2,0.9,false],[M],[["MODEL","MODEL"]]);L(fm,0,ec,0);fm=ec;}
+ if(MMV&&$("sage").checked){const sg=N("PathchSageAttentionKJ","Sage Attention",-1300,-80,["auto",false],[M],[["MODEL","MODEL"]]);L(fm,0,sg,0);fm=sg;}
+ const ks=FAM==="wan"?null:N("KSamplerSelect","Sampler",-1700,100,[$("smp").value],[],[["SAMPLER","SAMPLER"]]);
+ const rnd=Math.floor(Math.random()*4294967295),bs=parseInt($("bs").value,10),bsv=isNaN(bs)?-1:bs;
+ let refImg=null;
+ const RA=refs(),RG=$("rg").checked,RL=RA.filter(r=>r.d||r.n);
+ if(RG&&!RL.length)W.push("Reference image generation is on but no reference has a name or description.");
+ let IG=null;const IE=(!MMV&&$("ie").value==="h3")?"qwen":$("ie").value,IEN={qwen:"Qwen Image 2.1",flux2:"Flux 2",zimage:"Z-Image Turbo",h3:"MiniMax H3"};
+ const lr=$("ilr").value.split("\n").map(x=>x.trim()).filter(Boolean).map(l=>{const q=l.split("|"),v=parseFloat(q[1]);return {n:q[0].trim(),sv:isNaN(v)?1:v};});
+ const setupIG=()=>{if(IG||IE==="h3")return;
+  let mo=[N("UNETLoader","Image Model",-2200,-2600,[$("qun").value.trim(),"default"],[],[["MODEL","MODEL"]]),0];
+  let cl=[N("CLIPLoader","Image Text Encoder",-2200,-2400,[$("qte").value.trim(),IE==="qwen"?"qwen_image":(IE==="flux2"?"flux2":"lumina2"),"default"],[],[["CLIP","CLIP"]]),0];
+  const vl=N("VAELoader","Image VAE",-2200,-2200,[$("qvae").value.trim()],[],[["VAE","VAE"]]);
+  lr.forEach((l,k)=>{const n=N("LoraLoader","Image LoRA "+(k+1),-2550,-2600+k*170,[l.n,l.sv,l.sv],[M,["clip","CLIP"]],[["MODEL","MODEL"],["CLIP","CLIP"]]);L(mo[0],mo[1],n,0);L(cl[0],cl[1],n,1);mo=[n,0];cl=[n,1];});
+  if(IE==="qwen"){const q=N("QwenImage21Cache","Image Model Cache",-1900,-2600,["auto","default"],[M],[["MODEL","MODEL"]]);L(mo[0],mo[1],q,0);mo=[q,0];}
+  if(IE==="zimage"){const q=N("ModelSamplingAuraFlow","Image Model Sampling",-1900,-2600,[3],[M],[["MODEL","MODEL"]]);L(mo[0],mo[1],q,0);mo=[q,0];}
+  IG={m:mo,c:cl,v:vl,ks:IE==="flux2"?N("KSamplerSelect","Image Sampler Select",-1900,-2450,["euler"],[],[["SAMPLER","SAMPLER"]]):null};};
+ const imgGen=(label,x,y0,prompt,gw,gh,seed,rn,init,den)=>{
+  if(init&&IE!=="zimage"&&IE!=="h3")rn=[init].concat(rn);
+  const neg=$("neg").value.trim(),st=+$("rst").value||(IE==="zimage"?8:IE==="flux2"?20:40),cg=+$("rcfg").value||1,SI=[["noise","NOISE"],["guider","GUIDER"],["sampler","SAMPLER"],["sigmas","SIGMAS"],["latent_image","LATENT"]],SO=[["output","LATENT"],["denoised_output","LATENT"]],KI=[M,["positive","CONDITIONING"],["negative","CONDITIONING"],["latent_image","LATENT"]];let dc;
+  if(IE==="h3"){
+   const c=N("MiniMaxH3ImageToVideo",label+" Conditioning",x,y0,[prompt,w,h,5],[["clip","CLIP"],V,["first_frame","IMAGE",{shape:7}],["last_frame","IMAGE",{shape:7}],WI("width"),WI("height"),WI("length")],[["positive","CONDITIONING"],["LATENT","LATENT"]]);L(ck,0,c,0);L(vv,0,c,1);
+   const nz=N("RandomNoise",label+" Noise",x,y0+150,[seed,"fixed"],[],[["NOISE","NOISE"]]);
+   const gd=N("BasicGuider",label+" Guider",x,y0+300,[],[M,["conditioning","CONDITIONING"]],[["GUIDER","GUIDER"]]);L(fm,0,gd,0);L(c,0,gd,1);
+   const sc=N("BasicScheduler",label+" Scheduler",x,y0+450,[$("sch").value,+$("steps").value,dnv],[M],[["SIGMAS","SIGMAS"]]);L(fm,0,sc,0);
+   const sp=N("SamplerCustomAdvanced",label+" Sampler",x,y0+600,[],SI,SO);L(nz,0,sp,0);L(gd,0,sp,1);L(ks,0,sp,2);L(sc,0,sp,3);L(c,1,sp,4);
+   const vd=N("VAEDecode",label+" Decode",x,y0+750,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(sp,0,vd,0);L(vv,0,vd,1);
+   dc=N("ImageFromBatch",label+" Frame",x,y0+900,[0,1],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(vd,0,dc,0);return dc;}
+  setupIG();
+  const mkLat=(type,yy)=>{if(init){const e=N("VAEEncode",label+" Latent",x,yy,[],[["pixels","IMAGE"],V],[["LATENT","LATENT"]]);L(init,0,e,0);L(IG.v,0,e,1);return e;}return N(type,label+" Latent",x,yy,[gw,gh,1],[],[["LATENT","LATENT"]]);};
+  if(IE==="qwen"){const ins=[["clip","CLIP"]];rn.forEach((o,j)=>ins.push(["images.image_"+(j+1),"IMAGE",{shape:7}]));ins.push(["images.image_"+(rn.length+1),"IMAGE",{shape:7}],["vae","VAE",{shape:7}],["prompt","STRING",{widget:{name:"prompt"}}],["negative_prompt","STRING",{widget:{name:"negative_prompt"}}]);
+   const te=N("TextEncodeQwenImage21",label+" Prompt",x,y0,[prompt,neg,1024],ins,[["positive","CONDITIONING"],["negative","CONDITIONING"],["latent","LATENT"]]);
+   L(IG.c[0],IG.c[1],te,0);rn.forEach((o,j)=>L(o,0,te,1+j));if(rn.length)L(IG.v,0,te,ins.findIndex(a=>a[0]==="vae"));
+   const el=mkLat("EmptyLatentImage",y0+300);
+   const kk=N("KSampler",label+" Sampler",x,y0+450,[seed,"fixed",st,cg,"euler","simple",init?den:1],KI,[["LATENT","LATENT"]]);L(IG.m[0],IG.m[1],kk,0);L(te,0,kk,1);L(te,1,kk,2);L(el,0,kk,3);
+   dc=N("VAEDecode",label+" Decode",x,y0+700,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(kk,0,dc,0);L(IG.v,0,dc,1);}
+  else{const te=N("CLIPTextEncode",label+" Prompt",x,y0,[prompt],[["clip","CLIP"]],[["CONDITIONING","CONDITIONING"]]);L(IG.c[0],IG.c[1],te,0);
+   if(IE==="zimage"){
+    const zo=N("ConditioningZeroOut",label+" Negative",x,y0+150,[],[["conditioning","CONDITIONING"]],[["CONDITIONING","CONDITIONING"]]);L(te,0,zo,0);
+    const el=mkLat("EmptySD3LatentImage",y0+300);
+    const kk=N("KSampler",label+" Sampler",x,y0+450,[seed,"fixed",st,cg,"euler","simple",init?den:1],KI,[["LATENT","LATENT"]]);L(IG.m[0],IG.m[1],kk,0);L(te,0,kk,1);L(zo,0,kk,2);L(el,0,kk,3);
+    dc=N("VAEDecode",label+" Decode",x,y0+700,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(kk,0,dc,0);L(IG.v,0,dc,1);}
+   else{let cs=[te,0];
+    const fg=N("FluxGuidance",label+" Guidance",x,y0+150,[cg],[["conditioning","CONDITIONING"]],[["CONDITIONING","CONDITIONING"]]);L(cs[0],cs[1],fg,0);cs=[fg,0];
+    rn.forEach((o,j)=>{const yy=y0+300+j*450,sc=N("ImageScaleToTotalPixels",label+" Ref "+(j+1)+" Scale",x,yy,["lanczos",1],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(o,0,sc,0);
+     const en=N("VAEEncode",label+" Ref "+(j+1)+" Encode",x,yy+150,[],[["pixels","IMAGE"],V],[["LATENT","LATENT"]]);L(sc,0,en,0);L(IG.v,0,en,1);
+     const rl=N("ReferenceLatent",label+" Ref "+(j+1)+" Latent",x,yy+300,[],[["conditioning","CONDITIONING"],["latent","LATENT",{shape:7}]],[["CONDITIONING","CONDITIONING"]]);L(cs[0],cs[1],rl,0);L(en,0,rl,1);cs=[rl,0];});
+    const yb=y0+300+rn.length*450;
+    const el=mkLat("EmptyFlux2LatentImage",yb);
+    const sch=init?N("BasicScheduler",label+" Scheduler",x,yb+150,["simple",st,den],[M],[["SIGMAS","SIGMAS"]]):N("Flux2Scheduler",label+" Scheduler",x,yb+150,[st,gw,gh],[],[["SIGMAS","SIGMAS"]]);if(init)L(IG.m[0],IG.m[1],sch,0);
+    const nz=N("RandomNoise",label+" Noise",x,yb+300,[seed,"fixed"],[],[["NOISE","NOISE"]]);
+    const gd=N("BasicGuider",label+" Guider",x,yb+450,[],[M,["conditioning","CONDITIONING"]],[["GUIDER","GUIDER"]]);L(IG.m[0],IG.m[1],gd,0);L(cs[0],cs[1],gd,1);
+    const sp=N("SamplerCustomAdvanced",label+" Sampler",x,yb+600,[],SI,SO);L(nz,0,sp,0);L(gd,0,sp,1);L(IG.ks,0,sp,2);L(sch,0,sp,3);L(el,0,sp,4);
+    dc=N("VAEDecode",label+" Decode",x,yb+800,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(sp,0,dc,0);L(IG.v,0,dc,1);}}
+  return dc;};
+ if((RG&&RL.length)||JF){if(IE==="flux2"||IE==="zimage")W.push(IEN[IE]+" nodes follow ComfyUI's standard template layout and are unverified against your install. If a node shows red in ComfyUI, send me that workflow.");
+  if(lr.length&&IE==="h3")W.push("Image LoRAs are ignored by the MiniMax H3 engine.");}
+ if(RG&&RL.length){
+  W.push("Reference images are generated in the workflow with "+IEN[IE]+" and saved to ComfyUI/output/ref/. Copy them into ComfyUI/input to reuse them as LoadImage files.");
+  const rw=+$("rw").value||1024,rh=+$("rh").value||1024,sty=$("bst").value.trim();
+  RL.forEach((r,i)=>{const k=i+1,x=-1600+i*600;
+   const dc=imgGen("Ref "+k,x,-2600,(r.d||r.n)+(sty?". "+sty:""),rw,rh,bsv<0?rnd+i:bsv+i,[]);
+   const sv=N("SaveImageAdvanced","Save Ref "+k,x,dc.pos[1]+150,["ref/"+(r.f||("reference_"+k)).replace(/\.[a-z0-9]+$/i,""),"png","8-bit","sRGB"],[["images","IMAGE"]],[]);L(dc,0,sv,0);
+   r.node=dc;if(!refImg)refImg=dc;});}
+ if(MU){const mpt=$("mp").value.trim(),ms=Math.max(10,Math.min(240,+$("mseg").value||180)),nt=Math.min(30,Math.max(1,Math.ceil(total/ms)));
+  if(!mpt)W.push("Music option is on but the music prompt is empty.");
+  W.push("Music: "+nt+" ACE-Step track(s) of up to "+ms+"s save to ComfyUI/output/audio/"+base+"_music_*.mp3. Verify the ACE-Step node names and checkpoint in your ComfyUI. Enable the plan/ffmpeg export and run the ffmpeg script to mix the music under the film (the in-graph joined video has no music).");
+  const mc=N("CheckpointLoaderSimple","ACE-Step Music Model",-2200,1800,[$("mck").value.trim()],[],[["MODEL","MODEL"],["CLIP","CLIP"],["VAE","VAE"]]);
+  const mmo=N("ModelSamplingSD3","Music Sampling",-1900,1800,[5],[M],[["MODEL","MODEL"]]);L(mc,0,mmo,0);
+  for(let k=0;k<nt;k++){const x=-1600+k*420,secs=Math.max(10,Math.min(ms,Math.ceil(total-k*ms))),n=k+1;
+   const te=N("TextEncodeAceStepAudio","Music "+n+" Prompt",x,1800,[mpt,"[instrumental]",1],[["clip","CLIP"]],[["CONDITIONING","CONDITIONING"]]);L(mc,1,te,0);
+   const zo=N("ConditioningZeroOut","Music "+n+" Negative",x,1950,[],[["conditioning","CONDITIONING"]],[["CONDITIONING","CONDITIONING"]]);L(te,0,zo,0);
+   const el=N("EmptyAceStepLatentAudio","Music "+n+" Latent",x,2050,[secs,1],[],[["LATENT","LATENT"]]);
+   const kk=N("KSampler","Music "+n+" Sampler",x,2200,[(bsv<0?rnd:bsv)+1000+k,"fixed",50,5,"euler","simple",1],[M,["positive","CONDITIONING"],["negative","CONDITIONING"],["latent_image","LATENT"]],[["LATENT","LATENT"]]);
+   L(mmo,0,kk,0);L(te,0,kk,1);L(zo,0,kk,2);L(el,0,kk,3);
+   const da=N("VAEDecodeAudio","Music "+n+" Decode",x,2450,[],[["samples","LATENT"],V],[["AUDIO","AUDIO"]]);L(kk,0,da,0);L(mc,2,da,1);
+   const sa=N("SaveAudioMP3","Save Music "+n,x,2600,["audio/"+base+"_music","V0"],[["audio","AUDIO"]],[]);L(da,0,sa,0);}}
+ const rnm={};
+ const rNode=o=>{if(o.r.node)return o.r.node;if(!rnm[o.i])rnm[o.i]=N("LoadImage","Reference "+(o.i+1),-2550,-1000+o.i*150,[o.r.f,"image"],[],[["IMAGE","IMAGE"],["MASK","MASK"]]);return rnm[o.i];};
+ const refLog={};
+ const pick=s=>{const list=RA.map((r,i)=>({r:r,i:i})).filter(o=>o.r.node||o.r.f),sel=($("rsel").checked?(s.rr||""):"").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);let m;
+  if(sel.length)m=list.filter(o=>sel.includes(String(o.i+1))||(o.r.n&&sel.includes(o.r.n.toLowerCase())));
+  else if($("rauto").checked){const hay=(s.p+" "+s.dl).toLowerCase();m=list.filter(o=>o.r.n&&hay.includes(o.r.n.toLowerCase()));if(!m.length)m=list;}else m=list;
+  const lk=m.map(o=>o.i+1).join(",")||"none";(refLog[lk]=refLog[lk]||[]).push(s.gi+1);
+  return m;};
+ const pcache={},refName=o=>o.r.n||"reference "+(o.i+1);
+ const packRefs=(items,cap)=>{const key=items.map(o=>o.i).join(",")+"/"+cap;if(pcache[key])return pcache[key];let res;
+  if(items.length<=cap)res=items.map(o=>({n:rNode(o),l:refName(o),d:o.r.d}));
+  else{const gs=Math.ceil(items.length/cap);res=[];
+   for(let a=0;a<items.length;a+=gs){const g=items.slice(a,a+gs);
+    if(g.length===1){res.push({n:rNode(g[0]),l:refName(g[0]),d:g[0].r.d});continue;}
+    let cur=rNode(g[0]);
+    for(let k=1;k<g.length;k++){const st=N("ImageStitch","Reference Sheet "+(res.length+1)+" Join "+k,-2900,-1000+res.length*300+k*100,["right",true,0,"white"],[["image1","IMAGE"],["image2","IMAGE",{shape:7}]],[["IMAGE","IMAGE"]]);L(cur,0,st,0);L(rNode(g[k]),0,st,1);cur=st;}
+    res.push({n:cur,l:"a sheet of "+g.length+" references side by side, left to right: "+g.map(refName).join(", "),d:""});}
+   W.push(items.length+" reference images exceed the "+cap+"-image limit of one node input, so the extras are stitched side by side into sheets. Every reference is still linked and described in the prompt.");}
+  return pcache[key]=res;};
+ const FIT=$("rfit").value,fcache={};let fcount=0;
+ const fitNode=src=>{if(FIT==="orig")return src;if(fcache[src.id])return fcache[src.id];let n;const y=-1000+(fcount++)*120;
+  if(FIT==="crop")n=N("ImageScale","Reference Fit "+fcount,-2750,y,["lanczos",w,h,"center"],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);
+  else n=N("ResizeAndPadImage","Reference Fit "+fcount,-2750,y,[w,h,"black","area"],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);
+  L(src,0,n,0);return fcache[src.id]=n;};
+ const mkRef=(s,x,t,len,bl,lead)=>{const ld=lead?1:0,m=pick(s),pk=packRefs(m,(RM&&(GC||JF))?8:9),tag=(lead?["<Picture 1> = opening frame of this shot (continue from it)"]:[]).concat(pk.map((q,j)=>"<Picture "+(j+1+ld)+"> = "+q.l)).join("; ");
+  const ri=j=>["ref_images.ref_image_"+j,"IMAGE",{shape:7,label:"ref_image_"+j}],ins=[["clip","CLIP"],V,["audio_vae","VAE"]];
+  const tot=pk.length+ld,fitted=pk.map(q=>fitNode(q.n));for(let j=0;j<tot;j++)ins.push(ri(j));ins.push(ri(tot));
+  ins.push(["ref_videos.ref_video_0","IMAGE",{shape:7,label:"ref_video_0"}],["ref_video_audios.ref_video_audio_0","AUDIO",{shape:7,label:"ref_video_audio_0"}],["ref_audios.ref_audio_0","AUDIO",{shape:7,label:"ref_audio_0"}],["prompt","STRING",{widget:{name:"prompt"}}],WI("width"),WI("height"),WI("length"),["ref_image_size","COMBO",{widget:{name:"ref_image_size"}}]);
+  const c=N("MiniMaxH3ReferenceToVideo","Segment "+t+" Reference Conditioning",x,-280,[(tag?"Reference images: "+tag+". ":"")+(s.c||""),w,h,len,$("ris").value],ins,[["positive","CONDITIONING"],["LATENT","LATENT"]]);
+  L(ck,0,c,0);L(vv,0,c,1);L(av,0,c,2);const srcs=(lead?[lead]:[]).concat(fitted);srcs.forEach((n0,j)=>L((j===0&&bl)?bl(n0):n0,0,c,3+j));return c;};
+ if(RM)RA.forEach((r,i)=>{if(!r.node&&r.f)rNode({r:r,i:i});});
+ const qf=[],f0=nid;let fids=[];
+ const qFirst=(s,i)=>{const x=-800+i*750,t=s.gi+1,sty=$("bst").value.trim(),cap=parseInt($("jmax").value,10)||0,m0=pick(s),canRef=IE==="qwen"||IE==="flux2",pk=canRef?packRefs(m0,cap>0?cap:(IE==="qwen"?16:999)):[];
+  const tag=canRef?pk.map((q,j)=>"Picture "+(j+1)+": "+q.l+(q.d?" ("+q.d+")":"")).join("; "):m0.map(o=>(o.r.n?o.r.n+(o.r.d?" ("+o.r.d+")":""):o.r.d)).filter(Boolean).join("; ");
+  const pr=(tag?(canRef?"Reference images - ":"Subjects: ")+tag+". ":"")+"Opening frame of the shot: "+s.p+(sty?". "+sty:"")+($("jsty").value.trim()?". "+$("jsty").value.trim():"");
+  const dc=imgGen("First Frame "+t,x,-1700,pr,+$("kw").value||1280,+$("kh").value||720,bsv<0?rnd+s.gi:bsv+s.gi,canRef?pk.map(q=>q.n):[]);
+  const sv=N("SaveImageAdvanced","Save First Frame "+t,x,dc.pos[1]+150,["first_frames/"+base+"_first_"+String(t).padStart(2,"0"),"png","8-bit","sRGB"],[["images","IMAGE"]],[]);L(dc,0,sv,0);
+  return dc;};
+ const isAnc=(s,i)=>i===0||JN<=1||s.gi%JN===0||s.k;
+ if(JF){S.forEach((s,i)=>qf.push(isAnc(s,i)?qFirst(s,i):null));fids=nodes.filter(n=>n.id>f0&&!/^Reference /.test(n.title)).map(n=>n.id);
+  W.push("First frames: anchor scenes (the first, every Nth, and hard cuts) get a first frame generated by "+IEN[IE]+" (saved to ComfyUI/output/first_frames/). Other scenes continue from the previous scene's last frame. The keyframe option is ignored. With reference-to-video mode on, the anchor or last frame goes to MiniMax as <Picture 1>, followed by your references."+((IE==="zimage"||IE==="h3")&&RA.some(r=>r.f||r.d)?" "+IEN[IE]+" cannot take reference images, so first frames use the text prompt and reference descriptions only.":""));}
+ if(RG&&RL.length&&!RM&&!(JF&&(IE==="qwen"||IE==="flux2")))W.push("Generated reference images are only saved to ComfyUI/output/ref/ in this setup; nothing in the workflow uses them. Use Reference-to-video mode (MiniMax) or Generate scene first frames (Qwen or Flux 2) to link them.");
+ if(RM&&$("rfit").value!=="orig")W.push("Reference images are "+($("rfit").value==="pad"?"padded":"center-cropped")+" to "+w+"x"+h+" without stretching before they reach MiniMax (ResizeAndPadImage / ImageScale nodes). Pick 'Keep original size' to skip this.");
+ if(MMV&&(w%32||h%32))W.push("MiniMax works best with width and height in multiples of 32.");
+ if(JF&&Math.abs((+$("kw").value||1280)/(+$("kh").value||720)-w/h)>0.02)W.push("First-frame size "+($("kw").value||1280)+"x"+($("kh").value||720)+" has a different aspect ratio from the video "+w+"x"+h+", so the first frame may be stretched or cropped. Set the first-frame size to the same aspect.");
+ if(RM){W.push("Reference mode: scenes use MiniMaxH3ReferenceToVideo; first/last-frame, keyframe, chain and 'first reference as first frame' options are ignored. Prompts get <Picture N> tags in connection order. The node takes at most 9 images, so any extra references are stitched into sheets and still linked.");
+  if(!RA.some(r=>r.node||r.f))W.push("Reference mode is on but no reference has an image filename (or generation prompt with F on).");
+  if(w%32||h%32)W.push("Reference mode: width/height should be multiples of 32.");}
+ const ST=+$("steps").value||20,CF=+$("cfg").value||1,BT=+$("bat").value||1;
+ const addLora=(src,file,ttl,y)=>{if(!lora||!file)return src;const n=N("LoraLoaderModelOnly",ttl,-1950,y,[file,+$("ls").value],[M],[["MODEL","MODEL"]]);L(src,0,n,0);return n;};
+ const AL=MMV?null:(()=>{const neg=$("neg").value.trim();
+  if(FAM==="ltx"){
+   const lu=N("UNETLoader","LTX Model",-2200,100,[$("lun").value.trim(),"default"],[],[["MODEL","MODEL"]]);
+   const lmo=addLora(lu,$("llo").value.trim(),"LTX LoRA",-250);
+   const lc=N("DualCLIPLoader","LTX Text Encoder",-2200,300,[$("lt1").value.trim(),$("lt2").value.trim(),"ltxv","default"],[],[["CLIP","CLIP"]]);
+   const lv=N("VAELoader","LTX Video VAE",-2200,500,[$("lvae").value.trim()],[],[["VAE","VAE"]]);
+   const la=aud?N("LTXVAudioVAELoader","LTX Audio VAE",-2200,700,[$("lav").value.trim()],[],[["Audio VAE","VAE"]]):null;
+   const ln=N("CLIPTextEncode","LTX Negative",-1900,300,[neg],[["clip","CLIP"]],[["CONDITIONING","CONDITIONING"]]);L(lc,0,ln,0);
+   return {m:lmo,c:lc,v:lv,a:la,n:ln,k:ks};}
+  const wc=N("CLIPLoader","Wan Text Encoder",-2200,300,[$("wte").value.trim(),"wan","default"],[],[["CLIP","CLIP"]]);
+  const wv=N("VAELoader","Wan VAE",-2200,500,[$("wvae").value.trim()],[],[["VAE","VAE"]]);
+  const wn=N("CLIPTextEncode","Wan Negative",-1900,300,[neg],[["clip","CLIP"]],[["CONDITIONING","CONDITIONING"]]);L(wc,0,wn,0);
+  const sh=(src,ttl,y)=>{const n=N("ModelSamplingSD3",ttl,-1700,y,[VE==="wan22"?5:8],[M],[["MODEL","MODEL"]]);L(src,0,n,0);return n;};
+  const u1=N("UNETLoader",VE==="wan22"?"Wan High-Noise Model":"Wan Model",-2200,100,[$("wm1").value.trim(),"default"],[],[["MODEL","MODEL"]]);
+  const m1=sh(addLora(u1,$("wl1").value.trim(),"Wan LoRA",-250),"Wan Sampling",-100);
+  let m2=null;if(VE==="wan22"){const u2=N("UNETLoader","Wan Low-Noise Model",-2200,-300,[$("wm2").value.trim(),"default"],[],[["MODEL","MODEL"]]);m2=sh(addLora(u2,$("wl2").value.trim(),"Wan Low-Noise LoRA",-450),"Wan Low-Noise Sampling",-300);}
+  const cvl=VE==="wan21"?N("CLIPVisionLoader","Wan CLIP Vision",-2200,700,[$("wcv").value.trim()],[],[["CLIP_VISION","CLIP_VISION"]]):null;
+  return {c:wc,v:wv,n:wn,m1:m1,m2:m2,cv:cvl};})();
+ const upl=(UP||$("rfu").checked)?N("UpscaleModelLoader","Upscale Model",-2200,900,[$("upm").value.trim()],[],[["UPSCALE_MODEL","UPSCALE_MODEL"]]):null;
+ const altScene=(s,x,t,len,img,prompt,seed)=>{
+  const CE=[["CONDITIONING","CONDITIONING"]],SI5=[["noise","NOISE"],["guider","GUIDER"],["sampler","SAMPLER"],["sigmas","SIGMAS"],["latent_image","LATENT"]],SO2=[["output","LATENT"],["denoised_output","LATENT"]];
+  const pos=N("CLIPTextEncode","Positive "+t,x,-280,[prompt],[["clip","CLIP"]],CE);L(AL.c,0,pos,0);
+  if(FAM==="ltx"){
+   const cd=N("LTXVConditioning","Conditioning "+t,x,-130,[fps],[["positive","CONDITIONING"],["negative","CONDITIONING"]],[["positive","CONDITIONING"],["negative","CONDITIONING"]]);L(pos,0,cd,0);L(AL.n,0,cd,1);
+   let lat=N("EmptyLTXVLatentVideo","Video Latent "+t,x,50,[w,h,len,BT],[],[["LATENT","LATENT"]]);
+   if(img){const ii=N("LTXVImgToVideoInplace","Start Frame "+t,x,200,[1,false],[["vae","VAE"],["image","IMAGE"],["latent","LATENT"]],[["latent","LATENT"]]);L(AL.v,0,ii,0);L(img,0,ii,1);L(lat,0,ii,2);lat=ii;}
+   if(aud){const al=N("LTXVEmptyLatentAudio","Audio Latent "+t,x,350,[len,fps,BT],[["audio_vae","VAE"]],[["Latent","LATENT"]]);L(AL.a,0,al,0);
+    const cc=N("LTXVConcatAVLatent","AV Latent "+t,x,500,[],[["video_latent","LATENT"],["audio_latent","LATENT"]],[["latent","LATENT"]]);L(lat,0,cc,0);L(al,0,cc,1);lat=cc;}
+   const sc=N("LTXVScheduler","Scheduler "+t,x,650,[ST,2.05,0.95,true,0.1],[["latent","LATENT",{shape:7}]],[["SIGMAS","SIGMAS"]]);L(lat,0,sc,0);
+   const gd=N("CFGGuider","Guider "+t,x,800,[CF],[M,["positive","CONDITIONING"],["negative","CONDITIONING"]],[["GUIDER","GUIDER"]]);L(AL.m,0,gd,0);L(cd,0,gd,1);L(cd,1,gd,2);
+   const nz=N("RandomNoise","Noise "+t,x,200,[seed,"fixed"],[],[["NOISE","NOISE"]]);
+   const sp=N("SamplerCustomAdvanced","Sampler "+t,x,950,[],SI5,SO2);L(nz,0,sp,0);L(gd,0,sp,1);L(AL.k,0,sp,2);L(sc,0,sp,3);L(lat,0,sp,4);
+   let vs=[sp,0],as=null;
+   if(aud){const sep=N("LTXVSeparateAVLatent","Separate AV "+t,x,1100,[],[["av_latent","LATENT"]],[["video_latent","LATENT"],["audio_latent","LATENT"]]);L(sp,0,sep,0);vs=[sep,0];as=[sep,1];}
+   const vd=N("VAEDecode","Video Decode "+t,x,850,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(vs[0],vs[1],vd,0);L(AL.v,0,vd,1);
+   let ad=null;if(aud){ad=N("LTXVAudioVAEDecode","Audio Decode "+t,x,1000,[],[["samples","LATENT"],["audio_vae","VAE"]],[["Audio","AUDIO"]]);L(as[0],as[1],ad,0);L(AL.a,0,ad,1);}
+   return {vd:vd,sp:sp,ad:ad};}
+  const wi=N("WanImageToVideo","Segment "+t+" Conditioning",x,-130,[w,h,len,BT],[["positive","CONDITIONING"],["negative","CONDITIONING"],V,["clip_vision_output","CLIP_VISION_OUTPUT",{shape:7}],["start_image","IMAGE",{shape:7}],WI("width"),WI("height"),WI("length"),WI("batch_size")],[["positive","CONDITIONING"],["negative","CONDITIONING"],["latent","LATENT"]]);
+  L(pos,0,wi,0);L(AL.n,0,wi,1);L(AL.v,0,wi,2);
+  if(img){L(img,0,wi,4);if(AL.cv){const ce=N("CLIPVisionEncode","CLIP Vision Encode "+t,x,-450,["none"],[["clip_vision","CLIP_VISION"],["image","IMAGE"]],[["CLIP_VISION_OUTPUT","CLIP_VISION_OUTPUT"]]);L(AL.cv,0,ce,0);L(img,0,ce,1);L(ce,0,wi,3);}}
+  const KI2=[M,["positive","CONDITIONING"],["negative","CONDITIONING"],["latent_image","LATENT"]];let outn;
+  if(VE==="wan21"){const kk=N("KSampler","Sampler "+t,x,650,[seed,"fixed",ST,CF,$("smp").value,$("sch").value,dnv],KI2,[["LATENT","LATENT"]]);L(AL.m1,0,kk,0);L(wi,0,kk,1);L(wi,1,kk,2);L(wi,2,kk,3);outn=kk;}
+  else{const half=Math.max(1,Math.ceil(ST/2));
+   const ka=N("KSamplerAdvanced","Sampler High "+t,x,650,["enable",seed,"fixed",ST,CF,$("smp").value,$("sch").value,0,half,"enable"],KI2,[["LATENT","LATENT"]]);L(AL.m1,0,ka,0);L(wi,0,ka,1);L(wi,1,ka,2);L(wi,2,ka,3);
+   const kb=N("KSamplerAdvanced","Sampler Low "+t,x,850,["disable",seed,"fixed",ST,CF,$("smp").value,$("sch").value,half,10000,"disable"],KI2,[["LATENT","LATENT"]]);L(AL.m2,0,kb,0);L(wi,0,kb,1);L(wi,1,kb,2);L(ka,0,kb,3);outn=kb;}
+  const vd=N("VAEDecode","Video Decode "+t,x,1050,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(outn,0,vd,0);L(AL.v,0,vd,1);
+  return {vd:vd,sp:outn,ad:null};};
+ if(!MMV){W.push(VEN+" nodes follow ComfyUI's official template layout and are unverified against your install. If a node shows red in ComfyUI, send me that workflow.");
+  if($("kf").checked||$("jl").checked)W.push("Last-frame inputs are only wired for MiniMax H3; "+VEN+" uses first frames only.");
+  if($("rm").checked)W.push("Reference-to-video mode is MiniMax-only and is ignored for "+VEN+".");
+  if(FAM==="ltx"&&(w%32||h%32))W.push("LTX width/height should be multiples of 32.");
+  if(FAM==="wan"&&$("aud").checked)W.push("Wan has no audio output.");
+  if(VE==="ltx25")W.push("LTX 2.5 reuses the LTX 2.3 node layout; set your LTX 2.5 model filenames in Video engine.");}
+ if(UP&&!nj)W.push("Upscaling multiplies the memory used by the in-graph join. For long films tick 'Skip in-graph join'.");
+ const RFS=$("rfs").checked,RFU=$("rfu").checked,RFI=$("rfi").checked&&IE!=="h3";
+ if(RFI)setupIG();
+ const RFR=(la,t,x,sc)=>{let n=la;
+  if(RFS){const sh=N("ImageSharpen","Refresh Sharpen "+t,x+380,1450,[1,1,+$("rsa").value||0.4],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(n,0,sh,0);n=sh;}
+  if(RFU){const um=N("ImageUpscaleWithModel","Refresh Upscale "+t,x+380,1600,[],[["upscale_model","UPSCALE_MODEL"],["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(upl,0,um,0);L(n,0,um,1);
+   const bk=N("ImageScale","Refresh Downscale "+t,x+380,1750,["lanczos",w,h,"disabled"],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(um,0,bk,0);n=bk;}
+  if(RFI){const rf=pick(sc).slice(0,3).map(o=>rNode(o)),sty=$("bst").value.trim();
+   n=imgGen("Refresh "+t,x+380,1900,"Restore this exact frame as a sharp, clean, highly detailed photograph. Keep the composition, subject, pose, clothing, lighting and colors unchanged. Remove blur, pixelation and compression artifacts."+(sty?" "+sty:""),w,h,(bsv<0?rnd:bsv)+5000+sc.gi,rf,n,+$("rfd").value||0.3);}
+  return n;};
+ const chainActive=(mode==="last_frame_chain"&&!RM)||(JF&&JN>1)||(RM&&GC);
+ if((RFS||RFU||RFI)&&!chainActive)W.push("Long-film quality options need a chained frame (last-frame chain, scene first frames with re-anchor above 1, or reference mode with last-frame continuity); none is active in this setup, so they have no effect.");
+ if($("rfi").checked&&IE==="h3")W.push("Image-model refresh is not available with 'Same as video model'. Sharpen and the upscale round trip still apply.");
+ const CONT=($("ctp").value.trim()||"Continue seamlessly from the supplied first frame.")+" ";
+ const LK=$("lk").checked&&(RM||mode!=="last_frame_chain");let prevTok=null,unl=0;
+ let giN=null;const gen=$("rs").value==="gen"&&MMV;
+ const gi=()=>{if(giN)return giN;if(refImg&&$("rfirst").checked&&!$("gff").value.trim())return giN=refImg;
+  if(!gen){if(g)giN=N("LoadImage","Reference First Frame",-2200,-1300,[g,"image"],[],[["IMAGE","IMAGE"],["MASK","MASK"]]);return giN;}
+  const gp=$("gp").value.trim()||(S[0]&&S[0].c)||main;
+  const c=N("MiniMaxH3ImageToVideo","Reference Still Conditioning",-2200,-1300,[gp,w,h,5],[["clip","CLIP"],V,["first_frame","IMAGE",{shape:7}],["last_frame","IMAGE",{shape:7}],WI("width"),WI("height"),WI("length")],[["positive","CONDITIONING"],["LATENT","LATENT"]]);
+  L(ck,0,c,0);L(vv,0,c,1);
+  const nz=N("RandomNoise","Reference Still Noise",-1800,-1300,[bsv<0?rnd:bsv,"fixed"],[],[["NOISE","NOISE"]]);
+  const gd=N("BasicGuider","Reference Still Guider",-1800,-1150,[],[M,["conditioning","CONDITIONING"]],[["GUIDER","GUIDER"]]);L(fm,0,gd,0);L(c,0,gd,1);
+  const sc=N("BasicScheduler","Reference Still Scheduler",-1800,-1000,[$("sch").value,+$("steps").value,dnv],[M],[["SIGMAS","SIGMAS"]]);L(fm,0,sc,0);
+  const sp=N("SamplerCustomAdvanced","Reference Still Sampler",-1400,-1300,[],[["noise","NOISE"],["guider","GUIDER"],["sampler","SAMPLER"],["sigmas","SIGMAS"],["latent_image","LATENT"]],[["output","LATENT"],["denoised_output","LATENT"]]);
+  L(nz,0,sp,0);L(gd,0,sp,1);L(ks,0,sp,2);L(sc,0,sp,3);L(c,1,sp,4);
+  const vd=N("VAEDecode","Reference Still Decode",-1000,-1300,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(sp,0,vd,0);L(vv,0,vd,1);
+  giN=N("ImageFromBatch","Reference Still Frame",-700,-1300,[0,1],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(vd,0,giN,0);
+  const pv=N("PreviewImage","Preview Reference Still",-400,-1300,[],[["images","IMAGE"]],[]);L(giN,0,pv,0);
+  return giN;};
+ const lf=[],imgs=[],comps=[],names=[],grp=[];
+ S.forEach((s,i)=>{const g0=nid;
+  const x=-800+i*750,len=s.fr,t=s.gi+1;let img=null,chained=false,shared=i>0&&!s.k&&(kfOn?!s.f:(JF&&!RM&&$("jl").checked));
+  const mk=f=>N("LoadImage","First Frame "+t,x,-620,[f,"image"],[],[["IMAGE","IMAGE"],["MASK","MASK"]]);
+  if(RM){img=null;}else if(JF&&qf[i]){img=qf[i];}else if(JF){img=lf[i-1];chained=true;}else if(kfOn){img=(s.gi===0&&!s.f&&refImg&&$("rfirst").checked)?refImg:mk(s.sf);}else if(mode==="global_first_frame_scene1_only"){if(i===0)img=gi();}
+  else if(mode==="per_scene_manual"){if(s.f)img=mk(s.f);else if(i===0)img=gi();}
+  else if(s.f)img=mk(s.f);else if(i===0)img=gi();else{img=lf[i-1];chained=true;}
+  const blend=src=>{const b=N("ImageBlend","Order Lock "+t,x,-450,[0,"normal"],[["image1","IMAGE"],["image2","IMAGE"]],[["IMAGE","IMAGE"]]);L(src,0,b,0);L(prevTok,0,b,1);return b;};
+  const lockNow=LK&&i>0&&prevTok;
+  if(!RM&&LK&&i>0&&!img)unl++;
+  if(!RM&&lockNow&&img&&!chained)img=blend(img);
+  const seed=s.s!==""&&!isNaN(+s.s)?+s.s:($("sm").value==="same_seed_for_all_scenes"?(bsv<0?rnd:bsv):(bsv<0?Math.floor(Math.random()*4294967295):bsv+s.gi));
+  const MMR=!MMV?altScene(s,x,t,len,img,(chained?CONT:"")+(s.c||""),seed):(()=>{
+  const nz=N("RandomNoise","Noise "+t,x,200,[seed,"fixed"],[],[["NOISE","NOISE"]]);
+  const c=RM?mkRef(s,x,t,len,lockNow?blend:null,JF?(qf[i]||lf[i-1]):((RM&&GC&&i>0)?lf[i-1]:null)):N("MiniMaxH3ImageToVideo","Segment "+t+" Conditioning",x,-280,[(chained?CONT:"")+(s.c||""),w,h,len],
+   [["clip","CLIP"],V,["first_frame","IMAGE",{shape:7}],["last_frame","IMAGE",{shape:7}],WI("width"),WI("height"),WI("length")],
+   [["positive","CONDITIONING"],["LATENT","LATENT"]]);
+  if(!RM){L(ck,0,c,0);L(vv,0,c,1);if(img)L(img,0,c,2);}
+  if(kfOn){const lm=N("LoadImage","Last Frame "+t,x,-950,[s.lf,"image"],[],[["IMAGE","IMAGE"],["MASK","MASK"]]);L(lm,0,c,3);}
+  if(JF&&!RM&&$("jl").checked&&i<S.length-1&&!S[i+1].k&&qf[i+1])L(qf[i+1],0,c,3);
+  const gd=N("BasicGuider","Guider "+t,x,350,[],[M,["conditioning","CONDITIONING"]],[["GUIDER","GUIDER"]]);L(fm,0,gd,0);L(c,0,gd,1);
+  const sc=N("BasicScheduler","Scheduler "+t,x,500,[$("sch").value,+$("steps").value,dnv],[M],[["SIGMAS","SIGMAS"]]);L(fm,0,sc,0);
+  const sp=N("SamplerCustomAdvanced","Sampler "+t,x,650,[],[["noise","NOISE"],["guider","GUIDER"],["sampler","SAMPLER"],["sigmas","SIGMAS"],["latent_image","LATENT"]],[["output","LATENT"],["denoised_output","LATENT"]]);
+  L(nz,0,sp,0);L(gd,0,sp,1);L(ks,0,sp,2);L(sc,0,sp,3);L(c,1,sp,4);
+  const vd=N("VAEDecode","Video Decode "+t,x,850,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(sp,0,vd,0);L(vv,0,vd,1);
+  return {vd:vd,sp:sp,ad:null};})();
+  const vd=MMR.vd,sp=MMR.sp;
+  let vdo=vd;if(UP){const um=N("ImageUpscaleWithModel","Upscale "+t,x+380,850,[],[["upscale_model","UPSCALE_MODEL"],["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(upl,0,um,0);L(vd,0,um,1);vdo=um;
+   const fct=(+$("upf").value||2)/(+$("ups").value||2);if(Math.abs(fct-1)>0.001){const sb=N("ImageScaleBy","Upscale Resize "+t,x+380,1000,["lanczos",fct],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(um,0,sb,0);vdo=sb;}}
+  const ci=[["images","IMAGE"]];if(aud)ci.push(["audio","AUDIO",{shape:7}]);
+  const cv=N("CreateVideo","Create Video "+t,x,1150,[fps,8],ci,[["VIDEO","VIDEO"]]);L(vdo,0,cv,0);
+  if(aud){if(MMR.ad)L(MMR.ad,0,cv,1);else{const ad=N("VAEDecodeAudio","Audio Decode "+t,x,1000,[],[["samples","LATENT"],V],[["AUDIO","AUDIO"]]);L(sp,0,ad,0);L(av,0,ad,1);L(ad,0,cv,1);}}
+  const cp=N("GetVideoComponents","Segment "+t+" Components",x,1300,[],[["video","VIDEO"]],[["images","IMAGE"],["audio","AUDIO"],["fps","FLOAT"],["bit_depth","INT"]]);L(cv,0,cp,0);comps.push(cp);
+  if(LK&&i<S.length-1){prevTok=N("ImageFromBatch","Order Token "+t,x,1450,[len-1,1],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(cp,0,prevTok,0);}
+  if((mode==="last_frame_chain"&&!RM)||(JF&&JN>1)||(RM&&GC)){const la=N("ImageFromBatch","Segment "+t+" Last Frame",x,1450,[-1,1],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(UP?vd:cp,0,la,0);lf.push(i<S.length-1?RFR(la,t,x,s):la);
+   if(i===S.length-1){const sl=N("SaveImage","Save Last Frame "+t,x+350,1450,[base+"_lastframe_"+String(t).padStart(2,"0")],[["images","IMAGE"]],[]);L(la,0,sl,0);}}
+  if(chained||shared){const tr=N("ImageFromBatch","Trim Seg "+t,x,1600,[1,len-1],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(cp,0,tr,0);imgs.push(tr);}else imgs.push(cp);
+  const nm=base+"_scene_"+String(t).padStart(2,"0");names.push(nm+".mp4");
+  if($("sv").checked||nj){const sv=N("SaveVideo","Save Segment "+t,x,1750,["video/"+nm,"auto","auto"],[["video","VIDEO"]],[]);L(cv,0,sv,0);}
+  grp.push(nodes.filter(n=>n.id>g0&&!/^Reference /.test(n.title)).map(n=>n.id));
+ });
+ if(unl)W.push("Order lock: "+unl+" scene(s) have no first-frame image, so they cannot be locked into sequence (use keyframes, per-scene frames, chain or reference mode).");
+ {const ks=Object.keys(refLog);if(ks.length&&(RM||JF)){const rng=a=>a.length>3?a[0]+"-"+a[a.length-1]+" ("+a.length+" scenes)":a.join(",");W.push("References linked per scene: "+ks.map(k=>"scene "+rng(refLog[k])+" -> reference "+k).join("; ")+". Total references on the page with an image or generation prompt: "+RA.filter(r=>r.node||r.f).length+".");}}
+ const j0=nid;
+ const jx=-800+S.length*750+100;let cur=imgs[0],ca=comps[0],cas=1;
+ for(let i=1;!nj&&i<imgs.length;i++){
+  const b=N("ImageBatch","Join Video 1.."+(i+1),jx,400+(i-1)*80,[],[["image1","IMAGE"],["image2","IMAGE"]],[["IMAGE","IMAGE"]]);L(cur,0,b,0);L(imgs[i],0,b,1);cur=b;
+  if(aud){const a=N("AudioConcat","Join Audio 1.."+(i+1),jx,900+(i-1)*80,["after"],[["audio1","AUDIO"],["audio2","AUDIO"]],[["AUDIO","AUDIO"]]);L(ca,cas,a,0);L(comps[i],1,a,1);ca=a;cas=0;}
+ }
+ if(cur&&!nj){
+  const fi=[["images","IMAGE"]];if(aud)fi.push(["audio","AUDIO",{shape:7}]);
+  const f=N("CreateVideo","Create Final Long Video",jx+400,700,[fps,8],fi,[["VIDEO","VIDEO"]]);L(cur,0,f,0);if(aud)L(ca,cas,f,1);
+  const fs=N("SaveVideo","Save Final Long Video",jx+400,900,["video/"+base,"auto","auto"],[["video","VIDEO"]],[]);L(f,0,fs,0);
+ }
+ const uid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==="x"?r:(r&3|8)).toString(16);});
+ let subs=[];
+ if($("sg").checked&&S.length>1){
+  const n0=JSON.parse(JSON.stringify(nodes)),l0=JSON.parse(JSON.stringify(links)),nid0=nid,lid0=lid,jids=nodes.filter(n=>n.id>j0).map(n=>n.id);
+  const pack=(ids,title,px,py)=>{
+   const set=new Set(ids),NM={};nodes.forEach(n=>{NM[n.id]=n;});
+   const sid=uid(),inst={id:++nid,type:sid,pos:[px,py],size:[320,100],flags:{},order:nid-1,mode:0,inputs:[],outputs:[],properties:{},title:title};
+   const sin=[],sout=[],sl=[],rest=[],im={},om={};
+   links.forEach(l=>{const o=l[1],os=l[2],t=l[3],ts=l[4],ty=l[5],a=set.has(o),b=set.has(t);
+    if(a&&b)sl.push({id:l[0],origin_id:o,origin_slot:os,target_id:t,target_slot:ts,type:ty});
+    else if(b){const k=o+":"+os;let ix=im[k];
+     if(ix===undefined){ix=sin.length;im[k]=ix;const nm="in"+ix,lb=(NM[o]&&NM[o].title)||nm;sin.push({id:uid(),name:nm,label:lb,type:ty,linkIds:[],pos:[0,0]});inst.inputs.push({name:nm,label:lb,type:ty,link:l[0]});rest.push([l[0],o,os,inst.id,ix,ty]);}
+     const nl=++lid;sl.push({id:nl,origin_id:-10,origin_slot:ix,target_id:t,target_slot:ts,type:ty});sin[ix].linkIds.push(nl);NM[t].inputs[ts].link=nl;}
+    else if(a){const k=o+":"+os;let ox=om[k];
+     if(ox===undefined){ox=sout.length;om[k]=ox;const nm="out"+ox;sout.push({id:uid(),name:nm,type:ty,linkIds:[],pos:[0,0]});inst.outputs.push({name:nm,type:ty,links:[]});
+      const nl=++lid;sl.push({id:nl,origin_id:o,origin_slot:os,target_id:-20,target_slot:ox,type:ty});sout[ox].linkIds.push(nl);}
+     rest.push([l[0],inst.id,ox,t,ts,ty]);}
+    else rest.push(l);});
+   const oi={},oo={},gn=ids.map(i=>NM[i]);
+   sl.forEach(l=>{const k=l.origin_id+":"+l.origin_slot;(oi[k]=oi[k]||[]).push(l.id);});
+   gn.forEach(n=>n.outputs.forEach((o,k)=>{o.links=oi[n.id+":"+k]||[];}));
+   rest.forEach(l=>{const k=l[1]+":"+l[2];(oo[k]=oo[k]||[]).push(l[0]);});
+   const keep=nodes.filter(n=>!set.has(n.id));
+   keep.forEach(n=>n.outputs.forEach((o,k)=>{o.links=oo[n.id+":"+k]||[];}));
+   inst.outputs.forEach((o,k)=>{o.links=oo[inst.id+":"+k]||[];});
+   inst.size=[320,50+24*Math.max(inst.inputs.length,inst.outputs.length)];
+   const xs=gn.map(n=>n.pos[0]),ys=gn.map(n=>n.pos[1]),x0=Math.min(...xs)-420,x1=Math.max(...xs)+420,y0=Math.min(...ys);
+   sin.forEach((q,i)=>{q.pos=[x0+20,y0+20+i*20];});sout.forEach((q,i)=>{q.pos=[x1+10,y0+20+i*20];});
+   subs.push({id:sid,version:1,state:{lastGroupId:0,lastNodeId:nid,lastLinkId:lid,lastRerouteId:0},revision:0,config:{},name:title,inputNode:{id:-10,bounding:[x0,y0,150,Math.max(60,sin.length*20+40)]},outputNode:{id:-20,bounding:[x1,y0,130,Math.max(60,sout.length*20+40)]},inputs:sin,outputs:sout,widgets:[],nodes:gn,groups:[],links:sl,extra:{}});
+   keep.push(inst);nodes.splice(0,nodes.length,...keep);links.splice(0,links.length,...rest);};
+  try{
+   if(fids.length>2)pack(fids,"First Frames",-800,-700);
+   grp.forEach((ids,k)=>pack(ids,"Scene "+(S[k].gi+1),-800+(k%8)*420,Math.floor(k/8)*560));
+   if(jids.length>2)pack(jids,"Join & Save",-800,Math.ceil(grp.length/8)*560+80);
+   W.push("Subgraphs: each scene is one node. Double-click a scene node to open it and edit its prompt, frames or seed; the join is packed too.");
+  }catch(err){nodes.splice(0,nodes.length,...n0);links.splice(0,links.length,...l0);nid=nid0;lid=lid0;subs=[];W.push("Subgraph packing failed ("+err.message+"); exported flat instead.");}
+ }
+ const wf={id:uid(),revision:0,last_node_id:nid,last_link_id:lid,nodes:nodes,links:links,groups:[],definitions:{subgraphs:subs},config:{},extra:{ds:{scale:0.6,offset:[0,0]}},version:0.4};
+ return {S0:S0,kfOn:kfOn,ext:ext,nj:nj,base:base,E:E,W:W,wf:wf,ph:ph,total:total,frames:frames,names:names,S:S,fin:fin,fps:fps,w:w,h:h,aud:aud,lora:lora,turbo:turbo,mode:mode};
+}
+function preview(r){
+ const o=v=>v?"ON":"OFF",L=[];
+ L.push("Scenes: "+r.S.length+"   Total: "+r.total+"s   Frames: "+r.frames);
+ L.push("Resolution: "+r.w+"x"+r.h+"   FPS: "+r.fps);
+ L.push("LoRA "+o(r.lora)+" | Turbo "+o(r.turbo)+" | Audio "+o(r.aud));
+ L.push("Keyframes "+o(r.kfOn)+" | Bible "+o($("bib").checked)+" | External TTS "+o(r.ext)+" | In-graph join "+o(!r.nj));
+ L.push("EasyCache "+o($("ec").checked)+" | Sage Attention "+o($("sage").checked));
+ L.push("Sampler: "+$("smp").value+"   Scheduler: "+$("sch").value+"   Denoise: "+$("dn").value);
+ L.push("First-frame mode: "+r.mode);
+ L.push("Scene files: "+(r.names.join(", ")||"-")+($("sv").checked?" (previews)":" (not saved)"));
+ L.push("Final file: "+r.fin);
+ $("pv").textContent=L.join("\n");
+ const x=document.createElement("div");
+ const add=(t,c)=>{const d=document.createElement("div");d.className=c;d.textContent=t;x.appendChild(d);};
+ r.E.forEach(e=>add("ERROR: "+e,"err"));r.W.forEach(e=>add("WARN: "+e,"wrn"));
+ add("NODES TO CONFIRM (all others come from the reference workflow):","ok");
+ Object.keys(r.ph).forEach(k=>add(k+" -> "+r.ph[k],"ok"));
+ if(!Object.keys(r.ph).length)add("(none)","ok");
+ $("pv").appendChild(x);
+}
+function addRef(n,f,d){const c=document.createElement("div");c.className="rc";
+ c.innerHTML='<b></b><div class="g"><div><label>Name / label (e.g. Maya, Harbor town)</label><input class="rn"></div><div><label>Image filename (file in ComfyUI/input, or saved name when generating)</label><input class="rfn" placeholder="maya_sheet.png"></div></div><label>Description (the generation prompt when F is on; look, outfit, voice)</label><textarea class="rd"></textarea>';
+ c.querySelector(".rn").value=n||"";c.querySelector(".rfn").value=f||"";c.querySelector(".rd").value=d||"";$("refs").appendChild(c);
+ [...document.querySelectorAll(".rc")].forEach((x,i)=>x.querySelector("b").textContent="Reference "+(i+1));}
+function refs(){return [...document.querySelectorAll(".rc")].map(c=>({n:c.querySelector(".rn").value.trim(),f:c.querySelector(".rfn").value.trim(),d:c.querySelector(".rd").value.trim()}));}
+function refFirst(){if(!$("rfirst").checked)return "";const r=refs().find(x=>x.f);return r?r.f:"";}
+function refresh(){sync();preview(build());}
+function dl(n,t,m){const u=URL.createObjectURL(new Blob([t],{type:m})),a=document.createElement("a");a.href=u;a.download=n;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);}
+function applyRes(){const r=$("res").value,mm=$("ve").value==="mm";if(mm&&r!=="custom"){const q=r.split("x");$("w").value=q[0];$("h").value=q[1];}
+ $("wW").classList.toggle("hid",mm&&r!=="custom");$("hW").classList.toggle("hid",mm&&r!=="custom");}
+function resFromWH(){const v=$("w").value+"x"+$("h").value;$("res").value=[...$("res").options].some(o=>o.value===v)?v:"custom";}
+function applyEngine(){const ve=$("ve").value,im=$("ie").value;document.querySelectorAll("[data-img]").forEach(e=>e.classList.toggle("hid",!e.dataset.img.split(" ").includes(im)));document.querySelectorAll("[data-eng]").forEach(e=>e.classList.toggle("hid",!e.dataset.eng.split(" ").includes(ve)));
+ [...$("ie").options].forEach(o=>{if(o.value==="h3")o.disabled=ve!=="mm";});if(ve!=="mm"&&$("ie").value==="h3")$("ie").value="qwen";}
+function sync(){applyEngine();applyRes();$("refHint").textContent=(!$("rm").checked&&$("ve").value==="mm"&&refs().some(r=>r.f))?"Not linked to MiniMax yet: tick 'Reference-to-video mode' in the options below so these images are linked as <Picture N>.":"";document.body.classList.toggle("kon",$("kf").checked||$("bib").checked||$("ext").checked||$("rm").checked);$("bPlan").style.display=$("bFF").style.display=$("exp").checked?"":"none";}
+function plan(r){const sp=t=>t.split("\n").map(x=>x.trim()).filter(Boolean);
+ return JSON.stringify({output:r.fin,fps:r.fps,width:r.w,height:r.h,style:$("bst").value.trim(),characters:sp($("bch").value),reference_images:refs().map(r=>({name:r.n,file:r.f,description:r.d})),global_sound:$("bsn").value.trim(),external_tts:r.ext,
+ scenes:r.S0.map((s,i)=>({scene:i+1,prompt:s.p,duration_s:s.d,frames:vl(s.d||0,r.fps),first_frame:r.kfOn?s.sf:s.f,last_frame:r.kfOn?s.lf:s.l,hard_cut:i===0||s.k,dialogue:sp(s.dl),sound:s.sn,segment_prefix:r.base+"_scene_"+String(i+1).padStart(2,"0")}))},null,2);}
+function ffscript(r){const T=i=>String(i+1).padStart(2,"0"),st=(1/r.fps).toFixed(6);
+ const L=['#!/usr/bin/env bash','# Run inside your ComfyUI output folder (needs ffmpeg). Optional TTS dialogue: dialogue/scene_NN.wav','set -e','mkdir -p seg','ENC="-c:v libx264 -crf 16 -preset medium -pix_fmt yuv420p -c:a aac -b:a 192k -ar 48000"',
+ 'proc(){','f=$(ls "video/'+r.base+'_scene_$1_"*.mp4 2>/dev/null | head -n1)','[ -z "$f" ] && { echo "missing scene $1"; return; }','[ -s "seg/$1.mp4" ] && return','VF="null"; AF="anull"',
+ '[ "$2" = 1 ] && { VF="trim=start_frame=1,setpts=PTS-STARTPTS"; AF="atrim=start='+st+',asetpts=PTS-STARTPTS"; }','D="dialogue/scene_$1.wav"'];
+ if(r.aud)L.push('if [ -f "$D" ]; then ffmpeg -y -loglevel error -i "$f" -i "$D" -filter_complex "[0:v]$VF[v];[0:a]$AF,loudnorm=I=-20:TP=-2[a0];[1:a]loudnorm=I=-16:TP=-1.5[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0[a]" -map "[v]" -map "[a]" $ENC "seg/$1.mp4"','else ffmpeg -y -loglevel error -i "$f" -filter_complex "[0:v]$VF[v];[0:a]$AF,loudnorm=I=-20:TP=-2[a]" -map "[v]" -map "[a]" $ENC "seg/$1.mp4"','fi');
+ else if(r.ext)L.push('if [ -f "$D" ]; then IN=(-i "$D"); else IN=(-f lavfi -i anullsrc=r=48000:cl=stereo); fi','ffmpeg -y -loglevel error -i "$f" "${IN[@]}" -filter_complex "[0:v]$VF[v];[1:a]aresample=48000,apad[a]" -map "[v]" -map "[a]" -shortest $ENC "seg/$1.mp4"');
+ else L.push('ffmpeg -y -loglevel error -i "$f" -vf "$VF" -an -c:v libx264 -crf 16 -preset medium -pix_fmt yuv420p "seg/$1.mp4"');
+ L.push('}');
+ r.S0.forEach((s,i)=>L.push('proc '+T(i)+' '+(i>0&&!s.k&&r.kfOn?1:0)));
+ L.push(': > list.txt');
+ r.S0.forEach((s,i)=>L.push('[ -s seg/'+T(i)+'.mp4 ] && echo "file \'seg/'+T(i)+'.mp4\'" >> list.txt'));
+ L.push('ffmpeg -y -f concat -safe 0 -i list.txt -c copy "'+r.base+'_ffmpeg_joined.mp4"');
+ if($("mu").checked){const J=r.base+"_ffmpeg_joined.mp4",O=r.base+"_ffmpeg_music.mp4",vol=+$("mvol").value||0.3,hasA=r.aud||r.ext;
+  const f="atrim=0:$DUR,asetpts=PTS-STARTPTS,volume="+vol+",afade=t=out:st=$FADE:d=4";
+  L.push(": > mlist.txt","for m in audio/"+r.base+"_music_*.mp3; do echo \"file '$m'\" >> mlist.txt; done","ffmpeg -y -loglevel error -f concat -safe 0 -i mlist.txt -c copy music_all.mp3",
+   "DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 \""+J+"\")","FADE=$(awk -v d=\"$DUR\" 'BEGIN{print d-4}')",
+   hasA?"ffmpeg -y -loglevel error -i \""+J+"\" -stream_loop -1 -i music_all.mp3 -filter_complex \"[1:a]"+f+"[m];[0:a][m]amix=inputs=2:duration=first:normalize=0[a]\" -map 0:v -map \"[a]\" -c:v copy -c:a aac -b:a 192k \""+O+"\"":"ffmpeg -y -loglevel error -i \""+J+"\" -stream_loop -1 -i music_all.mp3 -filter_complex \"[1:a]"+f+"[a]\" -map 0:v -map \"[a]\" -c:v copy -c:a aac -b:a 192k \""+O+"\"");}
+ return L.join("\n")+"\n";}
+function gen(){const r=build();preview(r);if(r.E.length){$("out").value="";alert("Cannot generate the workflow:\n- "+r.E.join("\n- "));return null;}
+ const t=JSON.stringify(r.wf,null,2);$("out").value=t;return t;}
+$("bAdd").onclick=()=>{addScene("",null);refresh();};
+$("bRem").onclick=()=>{const c=document.querySelectorAll(".sc");if(c.length>1){c[c.length-1].remove();renum();refresh();}};
+$("bEx").onclick=()=>{
+ $("scenes").innerHTML="";cnt=0;
+ $("bst").value="Cinematic 4K footage, soft natural light, consistent character and style";$("bib").checked=true;
+ addScene("A lighthouse on a cliff at dawn, waves crashing below",15,"scene1_first.png");
+ addScene("The camera glides along the coast as seagulls take flight",15,"");
+ $("mode").value="per_scene_manual";$("aud").checked=false;$("lora").checked=false;$("turbo").checked=false;
+ autofill();refresh();};
+$("bRef").onclick=()=>{addRef();refresh();};
+$("bRefRm").onclick=()=>{const c=document.querySelectorAll(".rc");if(c.length>0){c[c.length-1].remove();refresh();}};
+$("rm").addEventListener("change",refresh);
+const EDEF={mm:{w:512,h:288,fps:24,smp:"res_multistep"},wan21:{w:832,h:480,fps:16,smp:"uni_pc",wm1:"wan2.1_i2v_480p_14B_fp16.safetensors",wte:"umt5_xxl_fp8_e4m3fn_scaled.safetensors",wvae:"wan_2.1_vae.safetensors",wcv:"clip_vision_h.safetensors",wl1:"lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"},wan22:{w:832,h:480,fps:16,smp:"euler",wm1:"wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",wm2:"wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",wte:"umt5_xxl_fp8_e4m3fn_scaled.safetensors",wvae:"wan_2.1_vae.safetensors",wl1:"wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",wl2:"wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"},ltx23:{w:768,h:512,fps:24,smp:"euler",lun:"ltx-2.3-22b-dev.safetensors",lt1:"gemma_3_12B_it.safetensors",lt2:"ltx-2.3_text_projection_bf16.safetensors",lvae:"LTX23_video_vae_bf16.safetensors",lav:"ltx-2.3-22b-dev.safetensors",llo:"ltx-2.3-22b-distilled-lora-384.safetensors"},ltx25:{w:768,h:512,fps:24,smp:"euler",lun:"ltx-2.5-22b-dev.safetensors",lt1:"gemma_3_12B_it.safetensors",lt2:"ltx-2.5_text_projection_bf16.safetensors",lvae:"LTX25_video_vae_bf16.safetensors",lav:"ltx-2.5-22b-dev.safetensors",llo:"ltx-2.5-22b-distilled-lora-384.safetensors"}};
+$("ve").addEventListener("change",()=>{const d=EDEF[$("ve").value];if(d)Object.keys(d).forEach(k=>{$(k).value=d[k];});resFromWH();autofill();refresh();});
+const IDEF={qwen:["qwen_image_2.1_int8_convrot.safetensors","qwen3vl_8b_int8_convrot.safetensors","qwen_image_2.1_vae_bf16.safetensors",40,1],flux2:["flux2_dev_fp8mixed.safetensors","mistral_3_small_flux2_bf16.safetensors","flux2-vae.safetensors",20,4],zimage:["z_image_turbo_bf16.safetensors","qwen_3_4b.safetensors","ae.safetensors",8,1]};
+$("ie").addEventListener("change",()=>{const d=IDEF[$("ie").value];if(d)["qun","qte","qvae","rst","rcfg"].forEach((id,k)=>{$(id).value=d[k];});refresh();});
+const TS=[["video_engine","ve"],["sharpen_strength","rsa"],["refresh_denoise","rfd"],["continuation_prompt","ctp"],["resolution_preset","res"],["reference_image_fit","rfit"],["reference_image_size","ris"],["upscale_model","upm"],["upscale_native_scale","ups"],["upscale_final_scale","upf"],["width","w"],["height","h"],["fps","fps"],["default_scene_duration_s","dd"],["output_name","fin"],["negative_prompt","neg"],["first_frame_mode","mode"],["image_engine","ie"],["image_loras","ilr"],["first_frame_width","kw"],["first_frame_height","kh"],["max_references_per_first_frame","jmax"],["reanchor_every_n_scenes","jn"],["music_checkpoint","mck"],["music_seconds_per_track","mseg"],["music_volume","mvol"]];
+const TO=[["audio","aud"],["reference_mode","rm"],["reference_last_frame_continuity","gc"],["link_references_by_name_only","rauto"],["keyframes","kf"],["consistency_bible","bib"],["external_tts","ext"],["skip_in_graph_join","nj"],["generate_reference_images","rg"],["generate_first_frames","jf"],["next_first_frame_as_last_frame","jl"],["music","mu"],["force_scene_order","lk"],["subgraph_packing","sg"],["plan_export","exp"],["upscale","up"],["sharpen_chained_frames","rfs"],["upscale_round_trip_chained_frames","rfu"],["image_model_refresh_chained_frames","rfi"]];
+function tplAdv(){const o={};document.querySelectorAll("input[id],select[id],textarea[id]").forEach(e=>{if(e.id==="out"||e.id==="tplFile")return;o[e.id]=e.type==="checkbox"?e.checked:e.value;});return o;}
+function tplGet(){
+ const sp=t=>t.split("\n").map(x=>x.trim()).filter(Boolean),ch=sp($("bch").value);
+ const rf=refs().map(r=>({name:r.n,filename:r.f,description:r.d}));
+ const sc=scenes().map(x=>({prompt:x.p,duration_s:x.d>0?x.d:(+$("dd").value||15),first_frame:x.f,last_frame:x.l,hard_cut:x.k,dialogue:sp(x.dl),sound:x.sn,references:x.rr,seed:x.s===""?null:Number(x.s)}));
+ return {_instructions:[
+ "HOW TO USE: fill in this JSON template and return ONLY the completed JSON (no commentary, no markdown). Keep every key and the exact structure; do not rename keys. Keys starting with _ are ignored.",
+ "story_brief is the premise or long prompt written by the user. Expand it into a full scene list. target_runtime_minutes: make the sum of all scene duration_s match it.",
+ "scenes: one object per continuous clip, in story order. prompt = what is seen plus camera movement, present tense, concrete visual detail. Use character and location names exactly as in reference_images[].name so they stay consistent. Do not put dialogue in prompt.",
+ "duration_s: normally 5 to 15 seconds. The generator rounds each clip up to a valid frame count automatically.",
+ "dialogue: array of strings formatted 'Speaker: line'. sound: short ambience / foley / music note for the scene. Leave empty if none.",
+ "hard_cut: true when the scene starts a new shot or location (matters when options.keyframes is true). first_frame and last_frame: leave empty unless the user supplied image filenames.",
+ "reference_images: one entry per character, location or style sheet. name = short label; description = look, outfit and voice (also the image-generation prompt when options.generate_reference_images is true); filename = image name in ComfyUI input (empty if generating). All of them are linked to every scene unless scenes[].references limits them.",
+ "scenes[].references: leave empty. It is only used if the page option 'Use the per-scene reference lists' is on. Optional list such as '1,3' or names to limit which reference images a scene uses; empty means all references.",
+ "consistency: style_line = one sentence of visual style shared by every scene; character_bible = array of 'Name: look; voice' lines; global_sound = one line of overall sound design.",
+ "music_prompt: one description of the music for the whole film (genre, mood, instruments, tempo); only used when options.music is true.","settings.video_engine is one of mm (MiniMax H3), wan21, wan22, ltx23, ltx25: keep it unless the user asks for a change. settings, options and advanced: keep the current values unless the user asks for a change. advanced lists every page control by its id."],
+ story_brief:"",target_runtime_minutes:null,
+ settings:Object.fromEntries(TS.map(t=>{const e=$(t[1]);return [t[0],e.type==="number"?+e.value:e.value];})),
+ options:Object.fromEntries(TO.map(t=>[t[0],$(t[1]).checked])),
+ music_prompt:$("mp").value.trim(),
+ consistency:{style_line:$("bst").value.trim(),character_bible:ch.length?ch:["Name: look; voice"],global_sound:$("bsn").value.trim()},
+ reference_images:rf.some(r=>r.name||r.filename||r.description)?rf:[{name:"",filename:"",description:""}],
+ scenes:sc,
+ advanced:tplAdv()};}
+function tplLoad(txt){
+ let t=txt.trim().replace(/^```[a-z]*\s*/i,"").replace(/```\s*$/,"");
+ const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a<0||b<a)throw new Error("No JSON object found in the file.");
+ const d=JSON.parse(t.slice(a,b+1)),warn=[];
+ if(d.nodes&&d.links)throw new Error("this is a ComfyUI workflow, not a project template. Use Generate Template, have your AI fill it in, then upload that file.");
+ const set=(id,v)=>{if(typeof v==="string"||(typeof v==="number"&&isFinite(v)))$(id).value=v;};
+ const ck=(id,v)=>{if(typeof v==="boolean")$(id).checked=v;};
+ const lines=v=>Array.isArray(v)?v.map(x=>String(x).trim()).filter(Boolean).join("\n"):(typeof v==="string"?v:"");
+ const S=d.settings||{},O=d.options||{},C=d.consistency||{};
+ if(d.advanced&&typeof d.advanced==="object")Object.keys(d.advanced).forEach(id=>{const e=document.getElementById(id),v=d.advanced[id];if(!e||id==="out"||id==="tplFile"||!e.matches("input,select,textarea"))return;if(e.type==="checkbox"){if(typeof v==="boolean")e.checked=v;}else if(e.tagName==="SELECT"){if([...e.options].some(o=>o.value===String(v)))e.value=String(v);}else if(typeof v==="string"||typeof v==="number")e.value=v;});
+ TS.forEach(t=>{let v=S[t[0]];if(v===undefined||v===null)return;if(Array.isArray(v))v=v.join("\n");const e=$(t[1]);if(e.tagName==="SELECT"){if([...e.options].some(o=>o.value===String(v)))e.value=String(v);}else set(t[1],v);});
+ TO.concat([["first_frames_qwen","jf"]]).forEach(t=>ck(t[1],O[t[0]]));
+ if(C.style_line!==undefined)$("bst").value=lines(C.style_line);
+ if(C.character_bible!==undefined)$("bch").value=lines(C.character_bible);
+ if(typeof d.music_prompt==="string")$("mp").value=d.music_prompt;
+ if(C.global_sound!==undefined)$("bsn").value=lines(C.global_sound);
+ let nr=0,ns=0;
+ if(Array.isArray(d.reference_images)){$("refs").innerHTML="";
+  d.reference_images.forEach(r=>{if(!r||!(r.name||r.filename||r.description))return;addRef(String(r.name||""),String(r.filename||""),String(r.description||""));nr++;});
+  if(!nr)addRef();}
+ if(Array.isArray(d.scenes)&&d.scenes.length){$("scenes").innerHTML="";cnt=0;
+  d.scenes.forEach((x,i)=>{x=x||{};const dur=Number(x.duration_s)>0?Number(x.duration_s):null,sd=x.seed===null||x.seed===undefined||x.seed===""||!isFinite(Number(x.seed))?null:Number(x.seed);
+   if(!x.prompt)warn.push("scene "+(i+1)+" has no prompt");
+   addScene(String(x.prompt||""),dur,String(x.first_frame||""),sd);
+   const c=[...document.querySelectorAll(".sc")].pop();
+   c.querySelector(".sl").value=String(x.last_frame||"");c.querySelector(".sk").checked=!!x.hard_cut;
+   c.querySelector(".sdl").value=lines(x.dialogue);c.querySelector(".ssn").value=String(x.sound||"");
+   c.querySelector(".srr").value=Array.isArray(x.references)?x.references.join(","):String(x.references||"");ns++;});}
+ else warn.push("no scenes found; existing scenes were kept");
+ if(S.resolution_preset===undefined&&(d.advanced&&d.advanced.res)===undefined)resFromWH();
+ refresh();
+ return "Loaded "+ns+" scene(s) and "+nr+" reference image(s)."+(warn.length?" Check: "+warn.slice(0,5).join("; ")+".":"")+" Review, then generate/download the workflow.";}
+$("bTpl").onclick=()=>{dl("h3_project_template.json",JSON.stringify(tplGet(),null,2),"application/json");$("tplMsg").textContent="Template downloaded. Give it to your AI with your story, then upload the result.";};
+$("bUp").onclick=()=>$("tplFile").click();
+$("tplFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
+ r.onload=()=>{try{$("tplMsg").textContent=tplLoad(String(r.result));}catch(err){$("tplMsg").textContent="Upload failed: "+err.message;}e.target.value="";};
+ r.onerror=()=>{$("tplMsg").textContent="Could not read the file.";};r.readAsText(f);};
+$("bGen").onclick=()=>{const t=gen();window.scrollTo({top:0,behavior:"smooth"});$("genMsg").textContent=t?"Workflow generated ("+Math.round(t.length/1024)+" KB). Use Download or Copy.":"Not generated: fix the errors listed in the preview.";};
+$("bClr").onclick=$("bClr2").onclick=()=>{$("out").value="";$("genMsg").textContent="JSON cleared.";};
+$("bPlan").onclick=()=>dl("minimax_h3_plan.json",plan(build()),"application/json");
+$("bFF").onclick=()=>dl("assemble_long_video.sh",ffscript(build()),"text/x-shellscript");
+const copyOut=()=>{const t=gen();if(!t)return;
+ const fb=()=>{$("out").select();document.execCommand("copy");};
+ if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).catch(fb);else fb();};
+$("bCopy").onclick=copyOut;$("bCopy2").onclick=copyOut;
+$("bDl").onclick=()=>{const t=gen();if(!t)return;
+ const u=URL.createObjectURL(new Blob([t],{type:"application/json"})),a=document.createElement("a");
+ a.href=u;a.download="minimax_h3_workflow.json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);};
+["turbo","lora","vae"].forEach(i=>$(i).addEventListener("change",()=>{autofill();refresh();}));
+$("scenes").addEventListener("change",()=>{autofill();refresh();});
+document.querySelector("main").addEventListener("input",refresh);
+$("dd").addEventListener("change",()=>{});
+addScene("",15);addRef();autofill();refresh();
+})();
+</script></body></html>
