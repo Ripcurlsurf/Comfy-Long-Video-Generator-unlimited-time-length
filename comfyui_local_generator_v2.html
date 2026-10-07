@@ -31,7 +31,7 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px ui-monospace,C
 <header><h1>Minimax-H3 &rarr; ComfyUI workflow generator</h1>
 <small>100% offline &middot; RAM 192 GB &middot; VRAM 32 GB &middot; single local GPU &middot; emits ComfyUI frontend (UI) JSON only</small></header>
 <div class="bar">
-<button id="bAdd">Add Scene</button><button id="bRem" class="s">Remove Scene</button><button id="bEx" class="s">Load Example</button><button id="bTpl" class="s">Generate Template</button><button id="bUp" class="s">Upload Filled Template</button><input type="file" id="tplFile" accept=".json,.txt,application/json,text/plain" style="display:none"><span id="tplMsg" style="font-size:12px;margin-left:8px"></span>
+<button id="bAdd">Add Scene</button><button id="bRem" class="s">Remove Scene</button><button id="bEx" class="s">Load Example</button><button id="bTpl" class="s">Generate Template</button><button id="bSave">Save Project</button><button id="bUp" class="s">Load Project / Filled Template</button><button id="bRestore" class="s hid">Restore last session</button><input type="file" id="tplFile" accept=".json,.txt,application/json,text/plain" style="display:none"><span id="tplMsg" style="font-size:12px;margin-left:8px"></span>
 <button id="bGen">Generate Workflow JSON</button><button id="bCopy">Copy Workflow JSON</button><button id="bDl">Download Workflow JSON</button><button id="bClr" class="s">Clear JSON</button><span id="genMsg" style="font-size:12px;margin-left:8px"></span><button id="bPlan" class="s" style="display:none">Download Plan JSON</button><button id="bFF" class="s" style="display:none">Download ffmpeg script</button>
 </div>
 <main><div>
@@ -160,11 +160,113 @@ three-quarter: three-quarter view from above</textarea></div></div></div>
 <div class="g" data-img="qwen flux2 zimage"><div><label>Refresh strength (denoise 0-1, lower keeps more of the frame)</label><input id="rfd" type="number" min="0.05" max="1" step="0.05" value="0.3"></div></div>
 <label>Continuation prompt (added to every scene that starts from a previous frame)</label><textarea id="ctp">Continue seamlessly from the supplied first frame. Preserve the same character, clothing, environment, lighting, camera language and audio. No reset, no cut, no fade. Keep the image sharp, clean and highly detailed; no blur, no compression artifacts.</textarea>
 <small style="color:#8a93a0">Tip: also lower "Re-anchor every N scenes" (2 to 4 is best) so a clean image-model frame restarts the chain, and render at 0.5 MP or higher without Turbo for final output.</small></section>
+<section><h2>Quality pipeline: draft, takes, finishing and audio</h2>
+<small style="color:#8a93a0">The route to an hour-long film that holds quality: render a fast draft of everything, approve it, re-render only the good shots at full quality (several takes if you like), then finish everything with one grade and one final encode. Every setting here is saved in templates and projects.</small>
+<div class="g"><div><label>Render pass</label><select id="rpass"><option value="final">Final (full quality)</option><option value="draft">Draft (fast preview of the film)</option></select></div><div><label>Draft size (% of width and height)</label><input id="dsc" type="number" min="25" max="100" step="5" value="50"></div><div><label>Draft steps (ignored with Turbo)</label><input id="dst" type="number" min="2" value="8"></div></div>
+<label>Scenes to render (optional, e.g. 3,5,10-14; empty = every scene in the range above). A skipped scene before a rendered one makes it start as a hard cut.</label><input id="rl" placeholder="3,5,10-14">
+<div class="g"><div><label>Take number (new seeds; take 1 keeps the normal file names)</label><input id="tk" type="number" min="1" value="1"></div><div><label>Project seed (used when Base seed is -1; keeps references identical across drafts, finals and takes)</label><input id="pseed" type="number" min="0"></div><div><label>Takes to download at once</label><input id="ntk" type="number" min="1" max="6" value="3"></div></div>
+<div class="cb"><input type="checkbox" id="lpng"><label for="lpng">Save each scene as lossless PNG frames in output/lossless/ (the finishing script then never re-uses compressed video; uses a lot of disk)</label></div>
+<div class="g"><div><label>Scene file codec in the finishing script</label><select id="icod"><option value="prores">ProRes 422 HQ (near-lossless, ~100 GB per hour at 1080p)</option><option value="ffv1">FFV1 (lossless, larger)</option><option value="x264">H.264 CRF 12 (smaller, slightly lossy)</option></select></div><div><label>Final codec</label><select id="fcod"><option value="h264">H.264 (plays everywhere)</option><option value="h265">H.265 10-bit (smaller)</option></select></div><div><label>Final quality CRF (lower = better, 12 to 18)</label><input id="fcrf" type="number" min="0" max="30" value="14"></div><div><label>Encoder preset</label><select id="fpre"><option>medium</option><option selected>slow</option><option>slower</option><option>veryslow</option></select></div><div><label>LUT file for the colour grade (optional .cube in the output folder)</label><input id="lutf" placeholder="film_grade.cube"></div><div><label>Film grain (0 off, 2 to 5 unifies shots)</label><input id="grn" type="number" min="0" max="20" value="3"></div><div><label>Loudness target (LUFS)</label><input id="lufs" type="number" value="-16"></div></div>
+<div class="cb"><input type="checkbox" id="dfl"><label for="dfl">Deflicker (smooths brightness flicker)</label></div>
+<div class="cb"><input type="checkbox" id="musep" checked><label for="musep">Make the music in the separate audio workflow (keeps the video workflow lighter; only applies when the music option is on)</label></div>
+<div class="cb"><input type="checkbox" id="duck" checked><label for="duck">Duck the music under dialogue and effects</label></div>
+<div class="btns"><button id="bTk" class="s">Download all takes</button><button id="bFin" class="s">Download finishing script</button><button id="bAud" class="s">Download audio workflow (music)</button><button id="bDS" class="s">Download dialogue sheet (CSV)</button><button id="bSeed" class="s">New project seed</button></div><div id="qMsg" style="font-size:12px;margin-top:4px"></div>
+</section>
 <section><h2>Upscale</h2><div class="cb"><input type="checkbox" id="up"><label for="up">Upscale video (adds an upscale model node to every scene)</label></div><div class="g"><div><label>Upscale model file</label><input id="upm" value="RealESRGAN_x2plus.pth"></div><div><label>Upscale model native scale</label><input id="ups" type="number" min="1" step="1" value="2"></div><div><label>Final scale vs generated size</label><input id="upf" type="number" min="1" step="0.25" value="2"></div></div></section>
 </div><div>
 <section><h2>Preview</h2><pre id="pv"></pre></section>
 <section><h2>Workflow JSON <button id="bCopy2" style="float:right">Copy</button><button id="bClr2" class="s" style="float:right;margin-right:6px">Clear</button></h2><textarea id="out" readonly></textarea></section>
 </div></main>
+<script type="text/plain" id="tplFF">
+#!/usr/bin/env bash
+# @@TITLE@@
+# Run this inside your ComfyUI output folder. Needs ffmpeg and ffprobe.
+# Pipeline: scene clips (or lossless PNG frames) -> near-lossless scene files -> one master
+#           -> grade, grain, music and dialogue mix -> ONE final lossy encode.
+# Dialogue (optional): put one file per scene in dialogue/scene_NN.wav (see the dialogue sheet).
+set -e
+ROOT="@@ROOT@@"
+DSFX="@@DSFX@@"
+FPS=@@FPS@@
+EXT=@@EXT@@
+LUFS=@@LUFS@@
+SEG="seg$DSFX"
+MASTER="${ROOT}${DSFX}_master.$EXT"
+FINAL="${ROOT}${DSFX}_final.mp4"
+IENC="@@IENC@@"
+FENC="@@FENC@@"
+mkdir -p "$SEG"
+
+proc(){
+NAME="${ROOT}${3}_scene_${1}"
+f=$(ls "video/${NAME}_"*.mp4 2>/dev/null | head -n1 || true)
+[ -z "$f" ] && { echo "missing scene $1 ($NAME)"; return; }
+[ -s "$SEG/$1$3.$EXT" ] && return
+VF="null"; AF="anull"
+[ "$2" = 1 ] && { VF="trim=start_frame=1,setpts=PTS-STARTPTS"; AF="atrim=start=@@ST@@,asetpts=PTS-STARTPTS"; }
+P="lossless/$NAME"
+if ls "$P"/f_*_.png >/dev/null 2>&1; then
+  first=$(ls "$P"/f_*_.png | head -n1)
+  num=$((10#$(basename "$first" | sed 's/^f_\([0-9]*\)_.png$/\1/')))
+  V0=(-framerate $FPS -start_number "$num" -i "$P/f_%05d_.png")
+else
+  V0=(-i "$f")
+fi
+D="dialogue/scene_$1.wav"
+#?AUD
+if [ -f "$D" ]; then
+  ffmpeg -y -loglevel error "${V0[@]}" -i "$f" -i "$D" -filter_complex "[0:v]$VF[v];[1:a]$AF,loudnorm=I=-20:TP=-2[a0];[2:a]loudnorm=I=-16:TP=-1.5[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0[a]" -map "[v]" -map "[a]" $IENC "$SEG/$1$3.$EXT"
+else
+  ffmpeg -y -loglevel error "${V0[@]}" -i "$f" -filter_complex "[0:v]$VF[v];[1:a]$AF,loudnorm=I=-20:TP=-2[a]" -map "[v]" -map "[a]" $IENC "$SEG/$1$3.$EXT"
+fi
+#?END
+#?EXTONLY
+VD=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$f")
+if [ -f "$D" ]; then IN=(-i "$D"); else IN=(-f lavfi -t "$VD" -i anullsrc=r=48000:cl=stereo); fi
+ffmpeg -y -loglevel error "${V0[@]}" "${IN[@]}" -filter_complex "[0:v]$VF[v];[1:a]aresample=48000,apad,atrim=0:$VD,asetpts=PTS-STARTPTS[a]" -map "[v]" -map "[a]" $IENC "$SEG/$1$3.$EXT"
+#?END
+#?SILENT
+ffmpeg -y -loglevel error "${V0[@]}" -vf "$VF" -an $IENC "$SEG/$1$3.$EXT"
+#?END
+}
+list_add(){ [ -s "$SEG/$1$2.$EXT" ] && echo "file '$SEG/$1$2.$EXT'" >> list.txt || true; }
+
+@@SCENES@@
+
+ffmpeg -y -loglevel error -f concat -safe 0 -i list.txt -c copy "$MASTER"
+echo "Master written: $MASTER"
+
+GRADE="@@GRADE@@"
+#?MUSIC
+: > mlist.txt
+for m in audio/${ROOT}_music_*.mp3; do echo "file '$m'" >> mlist.txt; done
+ffmpeg -y -loglevel error -f concat -safe 0 -i mlist.txt -c copy music_all.mp3
+DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$MASTER")
+FADE=$(awk -v d="$DUR" 'BEGIN{print d-4}')
+MFX="atrim=0:$DUR,asetpts=PTS-STARTPTS,volume=@@MVOL@@,afade=t=out:st=$FADE:d=4"
+#?HASA
+#?DUCK
+AFC="[0:a]asplit=2[a0][sc];[1:a]$MFX[m0];[m0][sc]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=500[md];[a0][md]amix=inputs=2:duration=first:normalize=0,loudnorm=I=$LUFS:TP=-1.5:LRA=11[a]"
+#?END
+#?NODUCK
+AFC="[1:a]$MFX[m0];[0:a][m0]amix=inputs=2:duration=first:normalize=0,loudnorm=I=$LUFS:TP=-1.5:LRA=11[a]"
+#?END
+#?END
+#?NOHASA
+AFC="[1:a]$MFX,loudnorm=I=$LUFS:TP=-1.5:LRA=11[a]"
+#?END
+ffmpeg -y -loglevel error -i "$MASTER" -stream_loop -1 -i music_all.mp3 -filter_complex "[0:v]$GRADE[v];$AFC" -map "[v]" -map "[a]" $FENC -c:a aac -b:a 256k -ar 48000 "$FINAL"
+#?END
+#?NOMUSIC
+#?HASA
+ffmpeg -y -loglevel error -i "$MASTER" -vf "$GRADE" -af "loudnorm=I=$LUFS:TP=-1.5:LRA=11" $FENC -c:a aac -b:a 256k -ar 48000 "$FINAL"
+#?END
+#?NOHASA
+ffmpeg -y -loglevel error -i "$MASTER" -vf "$GRADE" -an $FENC "$FINAL"
+#?END
+#?END
+echo "Final film written: $FINAL"
+</script>
 <script>
 (function(){
 "use strict";
@@ -173,29 +275,31 @@ const DESC={LoraLoaderModelOnly:"ComfyUI core LoRA loader; NOT present in the re
 let cnt=0;
 function addScene(p,d,f,s){
  cnt++;const c=document.createElement("div");c.className="sc";
- c.innerHTML='<b></b><label>Scene prompt</label><textarea class="sp"></textarea><div class="g"><div><label>Duration (s)</label><input class="sd" type="number" step="0.5"></div><div><label>First frame filename (optional)</label><input class="sf"></div><div><label>Seed (empty = inherit)</label><input class="ss" type="number"></div><div class="rvw"><label>Camera view of the subjects (picks the matching reference angle)</label><select class="sv"><option value="auto">Auto (read from the prompt)</option><option value="front">Front</option><option value="left">Left side</option><option value="right">Right side</option><option value="back">Back</option><option value="three-quarter">Three-quarter</option></select></div></div><div class="cb"><input type="checkbox" class="sk"><label>Hard cut before this scene (starts a new shot; nothing carries over from the previous scene)</label></div><div class="kx"><div class="g"><div><label>Last frame filename (optional)</label><input class="sl"></div></div><label>Dialogue (one per line, Speaker: line)</label><textarea class="sdl"></textarea><label>Scene sound design (optional)</label><input class="ssn"><div class="rlw"><label>Reference images for this scene (numbers or names, such as 1,3 or Maya)</label><input class="srr"></div></div><div class="fr"></div>';
+ c.innerHTML='<b></b><label>Scene prompt</label><textarea class="sp"></textarea><div class="g"><div><label>Duration (s)</label><input class="sd" type="number" step="0.5"></div><div><label>First frame filename (optional)</label><input class="sf"></div><div><label>Seed (empty = inherit)</label><input class="ss" type="number"></div><div><label>Use take in finishing</label><input class="stk" type="number" min="1" placeholder="1"></div><div class="rvw"><label>Camera view of the subjects (picks the matching reference angle)</label><select class="sv"><option value="auto">Auto (read from the prompt)</option><option value="front">Front</option><option value="left">Left side</option><option value="right">Right side</option><option value="back">Back</option><option value="three-quarter">Three-quarter</option></select></div></div><div class="cb"><input type="checkbox" class="sk"><label>Hard cut before this scene (starts a new shot; nothing carries over from the previous scene)</label></div><div class="kx"><div class="g"><div><label>Last frame filename (optional)</label><input class="sl"></div></div><label>Dialogue (one per line, Speaker: line)</label><textarea class="sdl"></textarea><label>Scene sound design (optional)</label><input class="ssn"><div class="rlw"><label>Reference images for this scene (numbers or names, such as 1,3 or Maya)</label><input class="srr"></div></div><div class="fr"></div>';
  c.querySelector(".sp").value=p||"";c.querySelector(".sd").value=d||$("dd").value||15;
  c.querySelector(".sf").value=f||"";c.querySelector(".ss").value=s==null?"":s;
  $("scenes").appendChild(c);renum();
 }
 function renum(){[...document.querySelectorAll(".sc")].forEach((c,i)=>c.querySelector("b").textContent="Scene "+(i+1));}
-function scenes(){return [...document.querySelectorAll(".sc")].map(c=>({p:c.querySelector(".sp").value.trim(),d:parseFloat(c.querySelector(".sd").value),f:c.querySelector(".sf").value.trim(),s:c.querySelector(".ss").value.trim(),l:c.querySelector(".sl").value.trim(),k:c.querySelector(".sk").checked,dl:c.querySelector(".sdl").value.trim(),sn:c.querySelector(".ssn").value.trim(),rr:c.querySelector(".srr").value.trim(),v:c.querySelector(".sv").value,el:c}));}
+function scenes(){return [...document.querySelectorAll(".sc")].map(c=>({p:c.querySelector(".sp").value.trim(),d:parseFloat(c.querySelector(".sd").value),f:c.querySelector(".sf").value.trim(),s:c.querySelector(".ss").value.trim(),l:c.querySelector(".sl").value.trim(),k:c.querySelector(".sk").checked,dl:c.querySelector(".sdl").value.trim(),sn:c.querySelector(".ssn").value.trim(),rr:c.querySelector(".srr").value.trim(),v:c.querySelector(".sv").value,tk:c.querySelector(".stk").value.trim(),el:c}));}
 function autofill(){
  const t=$("turbo").checked;
  const v=$("ve").value,st=v==="mm"||v.startsWith("wan")?(t?4:20):(t?8:20),cf=t?1.0:(v==="mm"?5.0:(v==="wan21"?6.0:(v==="wan22"?3.5:3.0)));
  $("steps").value=st;$("cfg").value=cf;
 }
 function vl(sec,fps){const v=$("ve").value,r=Math.max(5,Math.round(sec*fps));if(v==="mm")return 17*Math.ceil((r-5)/17)+5;if(v.startsWith("wan"))return 4*Math.ceil((r-1)/4)+1;return 8*Math.ceil((r-1)/8)+1;}
-function build(){
- const E=[],W=[],S0=scenes(),w=+$("w").value,h=+$("h").value,fps=+$("fps").value;
+function build(AO){
+ const E=[],W=[],S0=scenes(),DR=$("rpass").value==="draft",DSC=Math.min(100,Math.max(25,+$("dsc").value||50))/100,w=DR?Math.max(64,Math.round((+$("w").value)*DSC/32)*32):+$("w").value,h=DR?Math.max(64,Math.round((+$("h").value)*DSC/32)*32):+$("h").value,fps=+$("fps").value,TK=Math.max(1,parseInt($("tk").value,10)||1),OFF=(TK-1)*100003,STP=DR&&!$("turbo").checked?Math.max(2,+$("dst").value||8):+$("steps").value;
  const VE=$("ve").value,MMV=VE==="mm",FAM=MMV?"mm":(VE.startsWith("wan")?"wan":"ltx"),VEN={mm:"MiniMax H3",wan21:"Wan 2.1",wan22:"Wan 2.2",ltx23:"LTX 2.3",ltx25:"LTX 2.5"}[VE];
  const mode=$("mode").value,aud=$("aud").checked&&FAM!=="wan",lora=$("lora").checked,turbo=$("turbo").checked;
  const g=$("gff").value.trim()||refFirst(),main="",mxv=$("mx").value.trim();
- const JF=$("jf").checked,RM=$("rm").checked&&MMV,MU=$("mu").checked,GC=$("gc").checked,JN=Math.max(1,parseInt($("jn").value,10)||1),kfOn=$("kf").checked&&!RM&&!JF,bib=$("bib").checked,ext=$("ext").checked,nj=$("nj").checked,UP=$("up").checked;
+ const JF=$("jf").checked,RM=$("rm").checked&&MMV,MU=$("mu").checked||!!AO,GC=$("gc").checked,JN=Math.max(1,parseInt($("jn").value,10)||1),kfOn=$("kf").checked&&!RM&&!JF,bib=$("bib").checked,ext=$("ext").checked,nj=$("nj").checked,UP=$("up").checked&&!DR;
  const kn=n=>($("kfp").value.trim()||"keyframe_{n}.png").replace("{n}",String(n).padStart(3,"0"));
  let kc=1;S0.forEach((s,i)=>{s.gi=i;if(!kfOn)return;const cut=i===0||s.k;s.sf=s.f||(cut?kn(kc++):S0[i-1].lf);s.lf=s.l||kn(kc++);});
  const rf=parseInt($("rf").value,10)||1,rt=parseInt($("rt").value,10)||S0.length;
- const S=S0.filter((s,i)=>i+1>=rf&&i+1<=rt);
+ const rlSet=new Set();$("rl").value.split(/[,;\s]+/).filter(Boolean).forEach(t=>{const m=t.match(/^(\d+)(?:-(\d+))?$/);if(m){const a=+m[1],b=m[2]?+m[2]:a;for(let k=a;k<=b&&k<a+5000;k++)rlSet.add(k);}});
+ const S=S0.filter((s,i)=>i+1>=rf&&i+1<=rt&&(!rlSet.size||rlSet.has(i+1)));
+ {let cuts=[];S.forEach((s,i)=>{if(i>0&&s.gi!==S[i-1].gi+1&&!s.k){s.k=true;cuts.push(s.gi+1);}});if(cuts.length)W.push("Scenes to render skips scenes, so scene(s) "+cuts.slice(0,12).join(", ")+(cuts.length>12?" ...":"")+" start as hard cuts (nothing carries over from a scene that is not rendered). Give them a first frame or use anchored first frames for best continuity.");}
  if(!S.length)E.push("Scene range selects no scenes.");
  const chars=$("bch").value.split("\n").map(x=>x.trim()).filter(Boolean).concat(refs().filter(r=>r.n&&r.d).map(r=>r.n+": "+r.d));
  const compose=s=>{let b=main&&s.p?main+". "+s.p:(main||s.p),x=[];
@@ -207,7 +311,7 @@ function build(){
   if(aud){if(ext)x.push("No spoken dialogue, no speech; "+(MU?"ambience and effects only, no music":"ambience, effects and music only"));else s.dl.split("\n").map(l=>l.trim()).filter(Boolean).forEach(l=>x.push("Spoken line, "+l));}
   if(aud&&MU&&!ext)x.push("No background music; ambience and effects only");
   return x.length?b+". "+x.join(". ")+".":b;};
- const fin=($("fin").value.trim()||"minimax_h3_final_video.mp4"),base=fin.replace(/\.mp4$/i,"");
+ const fin=($("fin").value.trim()||"minimax_h3_final_video.mp4"),broot=fin.replace(/\.mp4$/i,""),base=broot+(DR?"_draft":"")+(TK>1?"_t"+TK:"");
  const dnr=$("dn").value.trim(),dnv=dnr===""?1:parseFloat(dnr);
  if(!(dnv>0&&dnv<=1))E.push("Denoise must be a number above 0 and up to 1.");
  if(S.length<1)E.push("At least 1 scene is required.");
@@ -246,7 +350,7 @@ function build(){
  if(MMV&&$("ec").checked){const ec=N("EasyCache","EasyCache",-1700,-100,[0.3,0.2,0.9,false],[M],[["MODEL","MODEL"]]);L(fm,0,ec,0);fm=ec;}
  if(MMV&&$("sage").checked){const sg=N("PathchSageAttentionKJ","Sage Attention",-1300,-80,["auto",false],[M],[["MODEL","MODEL"]]);L(fm,0,sg,0);fm=sg;}
  const ks=FAM==="wan"?null:N("KSamplerSelect","Sampler",-1700,100,[$("smp").value],[],[["SAMPLER","SAMPLER"]]);
- const rnd=Math.floor(Math.random()*4294967295),bs=parseInt($("bs").value,10),bsv=isNaN(bs)?-1:bs;
+ const rnd=($("pseed").value!==""&&+$("pseed").value>=0)?+$("pseed").value:Math.floor(Math.random()*4294967295),bs=parseInt($("bs").value,10),bsv=isNaN(bs)?-1:bs;
  let refImg=null;
  const RA=refs(),RG=$("rg").checked,RL=RA.filter(r=>r.d||r.n);
  if(RG&&!RL.length)W.push("Reference image generation is on but no reference has a name or description.");
@@ -273,7 +377,7 @@ function build(){
    const c=N("MiniMaxH3ImageToVideo",label+" Conditioning",x,y0,[prompt,w,h,5],[["clip","CLIP"],V,["first_frame","IMAGE",{shape:7}],["last_frame","IMAGE",{shape:7}],WI("width"),WI("height"),WI("length")],[["positive","CONDITIONING"],["LATENT","LATENT"]]);L(ck,0,c,0);L(vv,0,c,1);
    const nz=N("RandomNoise",label+" Noise",x,y0+150,[seed,"fixed"],[],[["NOISE","NOISE"]]);
    const gd=N("BasicGuider",label+" Guider",x,y0+300,[],[M,["conditioning","CONDITIONING"]],[["GUIDER","GUIDER"]]);L(fm,0,gd,0);L(c,0,gd,1);
-   const sc=N("BasicScheduler",label+" Scheduler",x,y0+450,[$("sch").value,+$("steps").value,dnv],[M],[["SIGMAS","SIGMAS"]]);L(fm,0,sc,0);
+   const sc=N("BasicScheduler",label+" Scheduler",x,y0+450,[$("sch").value,STP,dnv],[M],[["SIGMAS","SIGMAS"]]);L(fm,0,sc,0);
    const sp=N("SamplerCustomAdvanced",label+" Sampler",x,y0+600,[],SI,SO);L(nz,0,sp,0);L(gd,0,sp,1);L(ks,0,sp,2);L(sc,0,sp,3);L(c,1,sp,4);
    const vd=N("VAEDecode",label+" Decode",x,y0+750,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(sp,0,vd,0);L(vv,0,vd,1);
    dc=N("ImageFromBatch",label+" Frame",x,y0+900,[0,1],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(vd,0,dc,0);return dc;}
@@ -318,19 +422,20 @@ function build(){
    const dc=imgGen("Ref "+k,x,-2600,ILEAD+(r.d||r.n).replace(/[.\s]+$/,"")+(IST?". "+IST:"")+(sty?". "+sty:""),rw,rh,bsv<0?rnd+i:bsv+i,[]);
    const sv=N("SaveImageAdvanced","Save Ref "+k,x,dc.pos[1]+150,["ref/"+(r.f||("reference_"+k)).replace(/\.[a-z0-9]+$/i,""),"png","8-bit","sRGB"],[["images","IMAGE"]],[]);L(dc,0,sv,0);
    r.node=dc;if(!refImg)refImg=dc;});}
- if(MU){const mpt=$("mp").value.trim(),ms=Math.max(10,Math.min(240,+$("mseg").value||180)),nt=Math.min(30,Math.max(1,Math.ceil(total/ms)));
+ let mA=0,mB=0;
+ if(MU&&(AO||!$("musep").checked)){mA=nid;const MT=AO?S0.reduce((a,s)=>a+(s.d>0?s.d:(+$("dd").value||15)),0):total,mpt=$("mp").value.trim(),ms=Math.max(10,Math.min(240,+$("mseg").value||180)),nt=Math.min(30,Math.max(1,Math.ceil(MT/ms)));
   if(!mpt)W.push("Music option is on but the music prompt is empty.");
-  W.push("Music: "+nt+" ACE-Step track(s) of up to "+ms+"s save to ComfyUI/output/audio/"+base+"_music_*.mp3. Verify the ACE-Step node names and checkpoint in your ComfyUI. Enable the plan/ffmpeg export and run the ffmpeg script to mix the music under the film (the in-graph joined video has no music).");
+  W.push("Music: "+nt+" ACE-Step track(s) of up to "+ms+"s save to ComfyUI/output/audio/"+broot+"_music_*.mp3. Verify the ACE-Step node names and checkpoint in your ComfyUI. Enable the plan/ffmpeg export and run the ffmpeg script to mix the music under the film (the in-graph joined video has no music).");
   const mc=N("CheckpointLoaderSimple","ACE-Step Music Model",-2200,1800,[$("mck").value.trim()],[],[["MODEL","MODEL"],["CLIP","CLIP"],["VAE","VAE"]]);
   const mmo=N("ModelSamplingSD3","Music Sampling",-1900,1800,[5],[M],[["MODEL","MODEL"]]);L(mc,0,mmo,0);
-  for(let k=0;k<nt;k++){const x=-1600+k*420,secs=Math.max(10,Math.min(ms,Math.ceil(total-k*ms))),n=k+1;
+  for(let k=0;k<nt;k++){const x=-1600+k*420,secs=Math.max(10,Math.min(ms,Math.ceil(MT-k*ms))),n=k+1;
    const te=N("TextEncodeAceStepAudio","Music "+n+" Prompt",x,1800,[mpt,"[instrumental]",1],[["clip","CLIP"]],[["CONDITIONING","CONDITIONING"]]);L(mc,1,te,0);
    const zo=N("ConditioningZeroOut","Music "+n+" Negative",x,1950,[],[["conditioning","CONDITIONING"]],[["CONDITIONING","CONDITIONING"]]);L(te,0,zo,0);
    const el=N("EmptyAceStepLatentAudio","Music "+n+" Latent",x,2050,[secs,1],[],[["LATENT","LATENT"]]);
    const kk=N("KSampler","Music "+n+" Sampler",x,2200,[(bsv<0?rnd:bsv)+1000+k,"fixed",50,5,"euler","simple",1],[M,["positive","CONDITIONING"],["negative","CONDITIONING"],["latent_image","LATENT"]],[["LATENT","LATENT"]]);
    L(mmo,0,kk,0);L(te,0,kk,1);L(zo,0,kk,2);L(el,0,kk,3);
    const da=N("VAEDecodeAudio","Music "+n+" Decode",x,2450,[],[["samples","LATENT"],V],[["AUDIO","AUDIO"]]);L(kk,0,da,0);L(mc,2,da,1);
-   const sa=N("SaveAudioMP3","Save Music "+n,x,2600,["audio/"+base+"_music","V0"],[["audio","AUDIO"]],[]);L(da,0,sa,0);}}
+   const sa=N("SaveAudioMP3","Save Music "+n,x,2600,["audio/"+broot+"_music","V0"],[["audio","AUDIO"]],[]);L(da,0,sa,0);}mB=nid;}
  const rnm={};
  const rNode=o=>{if(o.r.node)return o.r.node;if(!rnm[o.i])rnm[o.i]=N("LoadImage","Reference "+(o.i+1),-2550,-1000+o.i*150,[o.r.f,"image"],[],[["IMAGE","IMAGE"],["MASK","MASK"]]);return rnm[o.i];};
  const AV=$("rang").checked,VU={},VL={front:"front view",left:"left side view",right:"right side view",back:"back view","three-quarter":"three-quarter view"};
@@ -351,7 +456,7 @@ function build(){
   L(ck,0,c,0);L(vv,0,c,1);L(av,0,c,2);L(org,0,c,3);
   const nz=N("RandomNoise",label+" Noise",x,y0+300,[seed,"fixed"],[],[["NOISE","NOISE"]]);
   const gd=N("BasicGuider",label+" Guider",x,y0+450,[],[M,["conditioning","CONDITIONING"]],[["GUIDER","GUIDER"]]);L(fm,0,gd,0);L(c,0,gd,1);
-  const sc=N("BasicScheduler",label+" Scheduler",x,y0+600,[$("sch").value,+$("steps").value,dnv],[M],[["SIGMAS","SIGMAS"]]);L(fm,0,sc,0);
+  const sc=N("BasicScheduler",label+" Scheduler",x,y0+600,[$("sch").value,STP,dnv],[M],[["SIGMAS","SIGMAS"]]);L(fm,0,sc,0);
   const sp=N("SamplerCustomAdvanced",label+" Sampler",x,y0+750,[],[["noise","NOISE"],["guider","GUIDER"],["sampler","SAMPLER"],["sigmas","SIGMAS"],["latent_image","LATENT"]],[["output","LATENT"],["denoised_output","LATENT"]]);L(nz,0,sp,0);L(gd,0,sp,1);L(ks,0,sp,2);L(sc,0,sp,3);L(c,1,sp,4);
   const vd=N("VAEDecode",label+" Decode",x,y0+900,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(sp,0,vd,0);L(vv,0,vd,1);
   const dc=N("ImageFromBatch",label+" Frame",x,y0+1050,[0,1],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(vd,0,dc,0);return dc;};
@@ -416,7 +521,7 @@ function build(){
  const qFirst=(s,i)=>{const x=-800+i*750,t=s.gi+1,sty=$("bst").value.trim(),cap=parseInt($("jmax").value,10)||0,m0=pick(s),canRef=IE==="qwen"||IE==="flux2",pk=canRef?packRefs(m0,cap>0?cap:(IE==="qwen"?16:999)):[];
   const tag=canRef?pk.map((q,j)=>"Picture "+(j+1)+": "+q.l+(q.d?" ("+q.d+")":"")).join("; "):m0.map(o=>(o.r.n?o.r.n+(o.r.d?" ("+o.r.d+")":""):o.r.d)).filter(Boolean).join("; ");
   const pr=(tag?(canRef?"Reference images - ":"Subjects: ")+tag+". ":"")+(AV&&canRef?"Camera view of the subjects: "+VL[viewOf(s)]+", keep each subject identical to its original image. ":"")+"Opening frame of the shot: "+s.p+(sty?". "+sty:"")+($("jsty").value.trim()?". "+$("jsty").value.trim():"");
-  const dc=imgGen("First Frame "+t,x,-1700,pr,+$("kw").value||1280,+$("kh").value||720,bsv<0?rnd+s.gi:bsv+s.gi,canRef?pk.map(q=>q.n):[]);
+  const dc=imgGen("First Frame "+t,x,-1700,pr,+$("kw").value||1280,+$("kh").value||720,(bsv<0?rnd+s.gi:bsv+s.gi)+OFF,canRef?pk.map(q=>q.n):[]);
   const sv=N("SaveImageAdvanced","Save First Frame "+t,x,dc.pos[1]+150,["first_frames/"+base+"_first_"+String(t).padStart(2,"0"),"png","8-bit","sRGB"],[["images","IMAGE"]],[]);L(dc,0,sv,0);
   return dc;};
  const isAnc=(s,i)=>i===0||JN<=1||s.gi%JN===0||s.k;
@@ -429,7 +534,7 @@ function build(){
  if(RM){W.push("Reference mode: scenes use MiniMaxH3ReferenceToVideo; first/last-frame, keyframe, chain and 'first reference as first frame' options are ignored. Prompts get <Picture N> tags in connection order. The node takes at most 9 images, so any extra references are stitched into sheets and still linked.");
   if(!RA.some(r=>r.node||r.f))W.push("Reference mode is on but no reference has an image filename (or a generation prompt with 'Generate reference images' on).");
   if(w%32||h%32)W.push("Reference mode: width/height should be multiples of 32.");}
- const ST=+$("steps").value||20,CF=+$("cfg").value||1,BT=+$("bat").value||1;
+ const ST=STP||20,CF=+$("cfg").value||1,BT=+$("bat").value||1;
  const addLora=(src,file,ttl,y)=>{if(!lora||!file)return src;const n=N("LoraLoaderModelOnly",ttl,-1950,y,[file,+$("ls").value],[M],[["MODEL","MODEL"]]);L(src,0,n,0);return n;};
  const AL=MMV?null:(()=>{const neg=$("neg").value.trim();
   if(FAM==="ltx"){
@@ -507,7 +612,7 @@ function build(){
   L(ck,0,c,0);L(vv,0,c,1);
   const nz=N("RandomNoise","Reference Still Noise",-1800,-1300,[bsv<0?rnd:bsv,"fixed"],[],[["NOISE","NOISE"]]);
   const gd=N("BasicGuider","Reference Still Guider",-1800,-1150,[],[M,["conditioning","CONDITIONING"]],[["GUIDER","GUIDER"]]);L(fm,0,gd,0);L(c,0,gd,1);
-  const sc=N("BasicScheduler","Reference Still Scheduler",-1800,-1000,[$("sch").value,+$("steps").value,dnv],[M],[["SIGMAS","SIGMAS"]]);L(fm,0,sc,0);
+  const sc=N("BasicScheduler","Reference Still Scheduler",-1800,-1000,[$("sch").value,STP,dnv],[M],[["SIGMAS","SIGMAS"]]);L(fm,0,sc,0);
   const sp=N("SamplerCustomAdvanced","Reference Still Sampler",-1400,-1300,[],[["noise","NOISE"],["guider","GUIDER"],["sampler","SAMPLER"],["sigmas","SIGMAS"],["latent_image","LATENT"]],[["output","LATENT"],["denoised_output","LATENT"]]);
   L(nz,0,sp,0);L(gd,0,sp,1);L(ks,0,sp,2);L(sc,0,sp,3);L(c,1,sp,4);
   const vd=N("VAEDecode","Reference Still Decode",-1000,-1300,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(sp,0,vd,0);L(vv,0,vd,1);
@@ -525,7 +630,7 @@ function build(){
   const lockNow=LK&&i>0&&prevTok;
   if(!RM&&LK&&i>0&&!img)unl++;
   if(!RM&&lockNow&&img&&!chained)img=blend(img);
-  const seed=s.s!==""&&!isNaN(+s.s)?+s.s:($("sm").value==="same_seed_for_all_scenes"?(bsv<0?rnd:bsv):(bsv<0?Math.floor(Math.random()*4294967295):bsv+s.gi));
+  const seed=(s.s!==""&&!isNaN(+s.s)?+s.s:($("sm").value==="same_seed_for_all_scenes"?(bsv<0?rnd:bsv):(bsv<0?rnd+s.gi*7919:bsv+s.gi)))+OFF;
   const MMR=!MMV?altScene(s,x,t,len,img,(chained?CONT:"")+(s.c||""),seed):(()=>{
   const nz=N("RandomNoise","Noise "+t,x,200,[seed,"fixed"],[],[["NOISE","NOISE"]]);
   const c=RM?mkRef(s,x,t,len,lockNow?blend:null,JF?(qf[i]||lf[i-1]):((RM&&GC&&i>0&&!s.k)?lf[i-1]:null)):N("MiniMaxH3ImageToVideo","Segment "+t+" Conditioning",x,-280,[(chained?CONT:"")+(s.c||""),w,h,len],
@@ -535,7 +640,7 @@ function build(){
   if(kfOn){const lm=N("LoadImage","Last Frame "+t,x,-950,[s.lf,"image"],[],[["IMAGE","IMAGE"],["MASK","MASK"]]);L(lm,0,c,3);}
   if(JF&&!RM&&$("jl").checked&&i<S.length-1&&!S[i+1].k&&qf[i+1])L(qf[i+1],0,c,3);
   const gd=N("BasicGuider","Guider "+t,x,350,[],[M,["conditioning","CONDITIONING"]],[["GUIDER","GUIDER"]]);L(fm,0,gd,0);L(c,0,gd,1);
-  const sc=N("BasicScheduler","Scheduler "+t,x,500,[$("sch").value,+$("steps").value,dnv],[M],[["SIGMAS","SIGMAS"]]);L(fm,0,sc,0);
+  const sc=N("BasicScheduler","Scheduler "+t,x,500,[$("sch").value,STP,dnv],[M],[["SIGMAS","SIGMAS"]]);L(fm,0,sc,0);
   const sp=N("SamplerCustomAdvanced","Sampler "+t,x,650,[],[["noise","NOISE"],["guider","GUIDER"],["sampler","SAMPLER"],["sigmas","SIGMAS"],["latent_image","LATENT"]],[["output","LATENT"],["denoised_output","LATENT"]]);
   L(nz,0,sp,0);L(gd,0,sp,1);L(ks,0,sp,2);L(sc,0,sp,3);L(c,1,sp,4);
   const vd=N("VAEDecode","Video Decode "+t,x,850,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(sp,0,vd,0);L(vv,0,vd,1);
@@ -552,6 +657,7 @@ function build(){
    if(i===S.length-1){const sl=N("SaveImage","Save Last Frame "+t,x+350,1450,[base+"_lastframe_"+String(t).padStart(2,"0")],[["images","IMAGE"]],[]);L(la,0,sl,0);}}
   if(chained||shared){const tr=N("ImageFromBatch","Trim Seg "+t,x,1600,[1,len-1],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(cp,0,tr,0);imgs.push(tr);}else imgs.push(cp);
   const nm=base+"_scene_"+String(t).padStart(2,"0");names.push(nm+".mp4");
+  if($("lpng").checked){const sq=N("SaveImage","Save Lossless Frames "+t,x+350,1300,["lossless/"+nm+"/f"],[["images","IMAGE"]],[]);L(vdo,0,sq,0);}
   if($("sv").checked||nj){const sv=N("SaveVideo","Save Segment "+t,x,1750,["video/"+nm,"auto","auto"],[["video","VIDEO"]],[]);L(cv,0,sv,0);}
   grp.push(nodes.filter(n=>n.id>g0&&!/^Reference /.test(n.title)).map(n=>n.id));
  });
@@ -572,7 +678,7 @@ function build(){
  }
  const uid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==="x"?r:(r&3|8)).toString(16);});
  let subs=[];
- if($("sg").checked&&S.length>1){
+ if($("sg").checked&&S.length>1&&!AO){
   const n0=JSON.parse(JSON.stringify(nodes)),l0=JSON.parse(JSON.stringify(links)),nid0=nid,lid0=lid,jids=nodes.filter(n=>n.id>j0).map(n=>n.id);
   const pack=(ids,title,px,py)=>{
    const set=new Set(ids),NM={};nodes.forEach(n=>{NM[n.id]=n;});
@@ -607,13 +713,14 @@ function build(){
    W.push("Subgraphs: each scene is one node. Double-click a scene node to open it and edit its prompt, frames or seed; the join is packed too.");
   }catch(err){nodes.splice(0,nodes.length,...n0);links.splice(0,links.length,...l0);nid=nid0;lid=lid0;subs=[];W.push("Subgraph packing failed ("+err.message+"); exported flat instead.");}
  }
+ if(AO){const keep=new Set(nodes.filter(n=>n.id>mA&&n.id<=mB).map(n=>n.id)),nn=nodes.filter(n=>keep.has(n.id)),ll=links.filter(l=>keep.has(l[1])&&keep.has(l[3]));nodes.splice(0,nodes.length,...nn);links.splice(0,links.length,...ll);Object.keys(ph).forEach(k=>{if(!nodes.some(n=>n.type===k))delete ph[k];});E.length=0;if(!$("mp").value.trim())E.push("Write a music prompt first (Dialogue, audio and music section).");W.length=0;W.push("Audio workflow: ACE-Step music only. Tracks save to ComfyUI/output/audio/"+broot+"_music_*.mp3. Verify the ACE-Step node names and checkpoint in your ComfyUI. The finishing script mixes them under the film.");}
  const wf={id:uid(),revision:0,last_node_id:nid,last_link_id:lid,nodes:nodes,links:links,groups:[],definitions:{subgraphs:subs},config:{},extra:{ds:{scale:0.6,offset:[0,0]}},version:0.4};
- return {S0:S0,kfOn:kfOn,ext:ext,nj:nj,base:base,E:E,W:W,wf:wf,ph:ph,total:total,frames:frames,names:names,S:S,fin:fin,fps:fps,w:w,h:h,aud:aud,lora:lora,turbo:turbo,mode:mode};
+ return {broot:broot,DR:DR,TK:TK,lpngGB:$("lpng").checked?Math.round(frames*w*h*1.7/1e9):0,S0:S0,kfOn:kfOn,ext:ext,nj:nj,base:base,E:E,W:W,wf:wf,ph:ph,total:total,frames:frames,names:names,S:S,fin:fin,fps:fps,w:w,h:h,aud:aud,lora:lora,turbo:turbo,mode:mode};
 }
 function preview(r){
  const o=v=>v?"ON":"OFF",L=[];
  L.push("Scenes: "+r.S.length+"   Total: "+r.total+"s   Frames: "+r.frames);
- L.push("Resolution: "+r.w+"x"+r.h+"   FPS: "+r.fps);
+ L.push("Resolution: "+r.w+"x"+r.h+"   FPS: "+r.fps+(r.DR?"   (DRAFT pass)":"")+(r.TK>1?"   Take "+r.TK:"")+(r.lpngGB?"   Lossless PNG frames ~"+r.lpngGB+" GB":""));
  L.push("LoRA "+o(r.lora)+" | Turbo "+o(r.turbo)+" | Audio "+o(r.aud));
  L.push("Keyframes "+o(r.kfOn)+" | Bible "+o($("bib").checked)+" | External TTS "+o(r.ext)+" | In-graph join "+o(!r.nj));
  L.push("EasyCache "+o($("ec").checked)+" | Sage Attention "+o($("sage").checked));
@@ -647,26 +754,28 @@ function applyEngine(){const ve=$("ve").value,im=$("ie").value;document.querySel
  [...$("ie").options].forEach(o=>{if(o.value==="h3")o.disabled=ve!=="mm";});if(ve!=="mm"&&$("ie").value==="h3"){$("ie").value="qwen";fixImg();}}
 function sync(){const ie0=$("ie").value,d0=IDEF[ie0];if(d0)$("isHint").textContent="Best for "+({qwen:"Qwen Image 2.1",flux2:"Flux 2",zimage:"Z-Image Turbo"})[ie0]+": "+d0[5]+" sampler, "+(d0[6]==="flux2"?"Flux 2 scheduler":d0[6]+" scheduler")+", "+d0[3]+" steps. Changing the image model resets these to its defaults.";applyEngine();applyRes();renderSuggest();const ra=$("rang").checked;$("rangBox").classList.toggle("hid",!ra);document.querySelectorAll(".rxw,.rvw").forEach(e=>e.classList.toggle("hid",!ra));document.querySelectorAll(".rlw").forEach(e=>e.classList.toggle("hid",$("rlink").value!=="list"));$("refHint").textContent=(!$("rm").checked&&$("ve").value==="mm"&&refs().some(r=>r.f))?"Not linked to MiniMax yet: tick 'Reference-to-video mode' in the options below so these images are linked as <Picture N>.":"";document.body.classList.toggle("kon",$("kf").checked||$("bib").checked||$("ext").checked||$("rm").checked);$("bPlan").style.display=$("bFF").style.display=$("exp").checked?"":"none";}
 function plan(r){const sp=t=>t.split("\n").map(x=>x.trim()).filter(Boolean);
- return JSON.stringify({output:r.fin,fps:r.fps,width:r.w,height:r.h,style:$("bst").value.trim(),characters:sp($("bch").value),reference_images:refs().map(r=>({name:r.n,file:r.f,description:r.d,type:r.t,angle_files:r.a,extra_angles:r.x})),global_sound:$("bsn").value.trim(),external_tts:r.ext,
- scenes:r.S0.map((s,i)=>({scene:i+1,prompt:s.p,duration_s:s.d,frames:vl(s.d||0,r.fps),first_frame:r.kfOn?s.sf:s.f,last_frame:r.kfOn?s.lf:s.l,hard_cut:i===0||s.k,camera_view:s.v,dialogue:sp(s.dl),sound:s.sn,segment_prefix:r.base+"_scene_"+String(i+1).padStart(2,"0")}))},null,2);}
-function ffscript(r){const T=i=>String(i+1).padStart(2,"0"),st=(1/r.fps).toFixed(6);
- const L=['#!/usr/bin/env bash','# Run inside your ComfyUI output folder (needs ffmpeg). Optional TTS dialogue: dialogue/scene_NN.wav','set -e','mkdir -p seg','ENC="-c:v libx264 -crf 16 -preset medium -pix_fmt yuv420p -c:a aac -b:a 192k -ar 48000"',
- 'proc(){','f=$(ls "video/'+r.base+'_scene_$1_"*.mp4 2>/dev/null | head -n1)','[ -z "$f" ] && { echo "missing scene $1"; return; }','[ -s "seg/$1.mp4" ] && return','VF="null"; AF="anull"',
- '[ "$2" = 1 ] && { VF="trim=start_frame=1,setpts=PTS-STARTPTS"; AF="atrim=start='+st+',asetpts=PTS-STARTPTS"; }','D="dialogue/scene_$1.wav"'];
- if(r.aud)L.push('if [ -f "$D" ]; then ffmpeg -y -loglevel error -i "$f" -i "$D" -filter_complex "[0:v]$VF[v];[0:a]$AF,loudnorm=I=-20:TP=-2[a0];[1:a]loudnorm=I=-16:TP=-1.5[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0[a]" -map "[v]" -map "[a]" $ENC "seg/$1.mp4"','else ffmpeg -y -loglevel error -i "$f" -filter_complex "[0:v]$VF[v];[0:a]$AF,loudnorm=I=-20:TP=-2[a]" -map "[v]" -map "[a]" $ENC "seg/$1.mp4"','fi');
- else if(r.ext)L.push('if [ -f "$D" ]; then IN=(-i "$D"); else IN=(-f lavfi -i anullsrc=r=48000:cl=stereo); fi','ffmpeg -y -loglevel error -i "$f" "${IN[@]}" -filter_complex "[0:v]$VF[v];[1:a]aresample=48000,apad[a]" -map "[v]" -map "[a]" -shortest $ENC "seg/$1.mp4"');
- else L.push('ffmpeg -y -loglevel error -i "$f" -vf "$VF" -an -c:v libx264 -crf 16 -preset medium -pix_fmt yuv420p "seg/$1.mp4"');
- L.push('}');
- r.S0.forEach((s,i)=>L.push('proc '+T(i)+' '+(i>0&&!s.k&&r.kfOn?1:0)));
- L.push(': > list.txt');
- r.S0.forEach((s,i)=>L.push('[ -s seg/'+T(i)+'.mp4 ] && echo "file \'seg/'+T(i)+'.mp4\'" >> list.txt'));
- L.push('ffmpeg -y -f concat -safe 0 -i list.txt -c copy "'+r.base+'_ffmpeg_joined.mp4"');
- if($("mu").checked){const J=r.base+"_ffmpeg_joined.mp4",O=r.base+"_ffmpeg_music.mp4",vol=+$("mvol").value||0.3,hasA=r.aud||r.ext;
-  const f="atrim=0:$DUR,asetpts=PTS-STARTPTS,volume="+vol+",afade=t=out:st=$FADE:d=4";
-  L.push(": > mlist.txt","for m in audio/"+r.base+"_music_*.mp3; do echo \"file '$m'\" >> mlist.txt; done","ffmpeg -y -loglevel error -f concat -safe 0 -i mlist.txt -c copy music_all.mp3",
-   "DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 \""+J+"\")","FADE=$(awk -v d=\"$DUR\" 'BEGIN{print d-4}')",
-   hasA?"ffmpeg -y -loglevel error -i \""+J+"\" -stream_loop -1 -i music_all.mp3 -filter_complex \"[1:a]"+f+"[m];[0:a][m]amix=inputs=2:duration=first:normalize=0[a]\" -map 0:v -map \"[a]\" -c:v copy -c:a aac -b:a 192k \""+O+"\"":"ffmpeg -y -loglevel error -i \""+J+"\" -stream_loop -1 -i music_all.mp3 -filter_complex \"[1:a]"+f+"[a]\" -map 0:v -map \"[a]\" -c:v copy -c:a aac -b:a 192k \""+O+"\"");}
- return L.join("\n")+"\n";}
+ return JSON.stringify({output:r.fin,render_pass:r.DR?"draft":"final",take:r.TK,fps:r.fps,width:r.w,height:r.h,style:$("bst").value.trim(),characters:sp($("bch").value),reference_images:refs().map(r=>({name:r.n,file:r.f,description:r.d,type:r.t,angle_files:r.a,extra_angles:r.x})),global_sound:$("bsn").value.trim(),external_tts:r.ext,
+ scenes:r.S0.map((s,i)=>({scene:i+1,prompt:s.p,duration_s:s.d,frames:vl(s.d||0,r.fps),first_frame:r.kfOn?s.sf:s.f,last_frame:r.kfOn?s.lf:s.l,hard_cut:i===0||s.k,camera_view:s.v,dialogue:sp(s.dl),sound:s.sn,segment_prefix:r.base+"_scene_"+String(i+1).padStart(2,"0"),use_take:parseInt(s.tk,10)||1}))},null,2);}
+function tplFill(src,flags,vars){const out=[],st=[];src.split("\n").forEach(l=>{const m=l.match(/^#\?(\w+)\s*$/);if(m){const k=m[1];if(k==="END"){st.pop();return;}const neg=k.indexOf("NO")===0,key=neg?k.slice(2):k;st.push(neg?!flags[key]:!!flags[key]);return;}if(st.every(Boolean))out.push(l);});return out.join("\n").replace(/@@(\w+)@@/g,(a,k)=>vars[k]!==undefined?vars[k]:a);}
+function ffscript(r){const T=i=>String(i+1).padStart(2,"0"),ic=$("icod").value,fc=$("fcod").value,EXT=ic==="x264"?"mp4":ic==="ffv1"?"mkv":"mov",DS=r.DR?"_draft":"";
+ const IENC=ic==="prores"?"-c:v prores_ks -profile:v 3 -vendor apl0 -pix_fmt yuv422p10le -c:a pcm_s24le":ic==="ffv1"?"-c:v ffv1 -level 3 -g 1 -pix_fmt yuv444p10le -c:a pcm_s24le":"-c:v libx264 -crf 12 -preset slow -pix_fmt yuv420p -c:a aac -b:a 320k";
+ const crf=Math.max(0,Math.min(30,+$("fcrf").value||14)),pre=$("fpre").value||"slow",lut=$("lutf").value.trim().replace(/['"\\:]/g,""),gr=Math.max(0,Math.min(20,+$("grn").value||0));
+ const FENC=fc==="h265"?"-c:v libx265 -crf "+crf+" -preset "+pre+" -pix_fmt yuv420p10le -tag:v hvc1 -x265-params log-level=error":"-c:v libx264 -crf "+crf+" -preset "+pre+" -profile:v high -pix_fmt yuv420p -movflags +faststart";
+ const g=[];if($("dfl").checked)g.push("deflicker=mode=pm:size=5");if(lut)g.push("lut3d=file="+lut);if(gr>0)g.push("noise=alls="+gr+":allf=t");
+ const sc=r.S0.map((s,i)=>{const tk=Math.max(1,parseInt(s.tk,10)||1),sf=DS+(tk>1?"_t"+tk:"");return 'proc '+T(i)+' '+(i>0&&!s.k&&r.kfOn?1:0)+' "'+sf+'"\nlist_add '+T(i)+' "'+sf+'"';});
+ const hasA=r.aud||r.ext,flags={AUD:r.aud,EXTONLY:!r.aud&&r.ext,SILENT:!hasA,HASA:hasA,MUSIC:$("mu").checked,DUCK:$("duck").checked};
+ const lines=sc.join("\n").split("\n"),procs=lines.filter(l=>l.indexOf("proc ")===0),lists=lines.filter(l=>l.indexOf("list_add")===0);
+ const body=procs.join("\n")+"\n: > list.txt\n"+lists.join("\n");
+ return tplFill($("tplFF").textContent.replace(/^\s*\n/,""),flags,{TITLE:"Finishing script for "+r.broot+(r.DR?" (DRAFT)":"")+". Scenes use the take chosen on each scene card (default take 1).",ROOT:r.broot,DSFX:DS,FPS:r.fps,EXT:EXT,LUFS:(+$("lufs").value||-16),ST:(1/r.fps).toFixed(6),IENC:IENC,FENC:FENC,GRADE:(g.length?g.join(","):"null"),MVOL:(+$("mvol").value||0.3),SCENES:body})+"\n";}
+function dialogueSheet(){const sp=t=>t.split("\n").map(x=>x.trim()).filter(Boolean),dd=+$("dd").value||15;
+ const bible=sp($("bch").value).concat(refs().filter(q=>q.n&&q.d).map(q=>q.n+": "+q.d)),rows=[["scene","line","speaker","text","scene_start_s","scene_duration_s","scene_sound","put_audio_in_file","voice_notes"]];let t0=0;
+ scenes().forEach((s,i)=>{const dur=s.d>0?s.d:dd;let n=0;sp(s.dl).forEach(l=>{n++;const k=l.indexOf(":"),who=k>0?l.slice(0,k).trim():"",tx=k>0?l.slice(k+1).trim():l,b=bible.find(c=>who&&c.split(":")[0].trim().toLowerCase()===who.toLowerCase()),vn=b&&b.indexOf(";")>=0?b.slice(b.lastIndexOf(";")+1).trim():"";
+  rows.push([i+1,n,who,tx,t0,dur,s.sn,"dialogue/scene_"+String(i+1).padStart(2,"0")+".wav",vn]);});t0+=dur;});
+ const esc=v=>'"'+String(v).replace(/"/g,'""')+'"';return rows.map(r=>r.map(esc).join(",")).join("\r\n");}
+function allTakes(){const n=Math.max(1,Math.min(6,parseInt($("ntk").value,10)||1)),keep=$("tk").value,outs=[];
+ for(let t=1;t<=n;t++){$("tk").value=t;const r=build();if(r.E.length){$("tk").value=keep;alert("Cannot generate take "+t+":\n- "+r.E.join("\n- "));refresh();return;}outs.push([r.base,JSON.stringify(r.wf,null,2)]);}
+ $("tk").value=keep;refresh();outs.forEach((o,i)=>setTimeout(()=>dl(o[0]+"_workflow.json",o[1],"application/json"),i*500));
+ $("qMsg").textContent=n+" workflows downloaded ("+outs.map(o=>o[0]).join(", ")+"). Queue them one after another, review each take, then set 'Use take' on every scene card and run the finishing script. Reference images stay identical because they share the project seed.";}
 function gen(){const r=build();preview(r);if(r.E.length){$("out").value="";alert("Cannot generate the workflow:\n- "+r.E.join("\n- "));return null;}
  const t=JSON.stringify(r.wf,null,2);$("out").value=t;return t;}
 $("bAdd").onclick=()=>{addScene("",null);refresh();};
@@ -736,13 +845,13 @@ const IDEF={qwen:["qwen_image_2.1_int8_convrot.safetensors","qwen3vl_8b_int8_con
 (function(){const fill=(id,src,extra)=>{const t=$(id);t.innerHTML=[...$(src).options].map(o=>"<option value=\""+o.value+"\">"+o.textContent+"</option>").join("")+(extra||"");};
  fill("isamp","smp");fill("isch","sch","<option value=\"flux2\">Flux 2 scheduler (Flux 2 default)</option>");$("isamp").value="euler";$("isch").value="simple";})();
 $("ie").addEventListener("change",()=>{const d=IDEF[$("ie").value];if(d)IDIDS.forEach((id,k)=>{$(id).value=d[k];});refresh();});
-const TS=[["video_engine","ve"],["angle_engine","aeng"],["sharpen_strength","rsa"],["refresh_denoise","rfd"],["continuation_prompt","ctp"],["resolution_preset","res"],["reference_image_fit","rfit"],["reference_image_size","ris"],["upscale_model","upm"],["upscale_native_scale","ups"],["upscale_final_scale","upf"],["width","w"],["height","h"],["fps","fps"],["default_scene_duration_s","dd"],["output_name","fin"],["negative_prompt","neg"],["first_frame_mode","mode"],["image_engine","ie"],["image_loras","ilr"],["image_sampler","isamp"],["qwen_cache_node","qcache"],["image_scheduler","isch"],["first_frame_width","kw"],["first_frame_height","kh"],["max_references_per_first_frame","jmax"],["reanchor_every_n_scenes","jn"],["reference_linking","rlink"],["character_angle_prompts","rav"],["location_angle_prompts","rav2"],["object_angle_prompts","rav3"],["music_checkpoint","mck"],["music_seconds_per_track","mseg"],["music_volume","mvol"]];
-const TO=[["audio","aud"],["reference_mode","rm"],["reference_last_frame_continuity","gc"],["keyframes","kf"],["consistency_bible","bib"],["external_tts","ext"],["skip_in_graph_join","nj"],["generate_reference_images","rg"],["multi_angle_references","rang"],["generate_first_frames","jf"],["next_first_frame_as_last_frame","jl"],["music","mu"],["force_scene_order","lk"],["subgraph_packing","sg"],["plan_export","exp"],["upscale","up"],["sharpen_chained_frames","rfs"],["upscale_round_trip_chained_frames","rfu"],["image_model_refresh_chained_frames","rfi"]];
+const TS=[["video_engine","ve"],["render_pass","rpass"],["draft_size_percent","dsc"],["draft_steps","dst"],["scenes_to_render","rl"],["take_number","tk"],["project_seed","pseed"],["takes_to_download","ntk"],["scene_file_codec","icod"],["final_codec","fcod"],["final_crf","fcrf"],["final_preset","fpre"],["lut_file","lutf"],["film_grain","grn"],["loudness_lufs","lufs"],["angle_engine","aeng"],["sharpen_strength","rsa"],["refresh_denoise","rfd"],["continuation_prompt","ctp"],["resolution_preset","res"],["reference_image_fit","rfit"],["reference_image_size","ris"],["upscale_model","upm"],["upscale_native_scale","ups"],["upscale_final_scale","upf"],["width","w"],["height","h"],["fps","fps"],["default_scene_duration_s","dd"],["output_name","fin"],["negative_prompt","neg"],["first_frame_mode","mode"],["image_engine","ie"],["image_loras","ilr"],["image_sampler","isamp"],["qwen_cache_node","qcache"],["image_scheduler","isch"],["first_frame_width","kw"],["first_frame_height","kh"],["max_references_per_first_frame","jmax"],["reanchor_every_n_scenes","jn"],["reference_linking","rlink"],["character_angle_prompts","rav"],["location_angle_prompts","rav2"],["object_angle_prompts","rav3"],["music_checkpoint","mck"],["music_seconds_per_track","mseg"],["music_volume","mvol"]];
+const TO=[["audio","aud"],["lossless_png_frames","lpng"],["music_in_separate_workflow","musep"],["deflicker","dfl"],["music_ducking","duck"],["reference_mode","rm"],["reference_last_frame_continuity","gc"],["keyframes","kf"],["consistency_bible","bib"],["external_tts","ext"],["skip_in_graph_join","nj"],["generate_reference_images","rg"],["multi_angle_references","rang"],["generate_first_frames","jf"],["next_first_frame_as_last_frame","jl"],["music","mu"],["force_scene_order","lk"],["subgraph_packing","sg"],["plan_export","exp"],["upscale","up"],["sharpen_chained_frames","rfs"],["upscale_round_trip_chained_frames","rfu"],["image_model_refresh_chained_frames","rfi"]];
 function tplAdv(){const o={};document.querySelectorAll("input[id],select[id],textarea[id]").forEach(e=>{if(e.id==="out"||e.id==="tplFile")return;o[e.id]=e.type==="checkbox"?e.checked:e.value;});return o;}
 function tplGet(){
  const sp=t=>t.split("\n").map(x=>x.trim()).filter(Boolean),ch=sp($("bch").value);
  const rf=refs().map(r=>({name:r.n,filename:r.f,description:r.d,type:r.t,angle_files:r.a,extra_angles:r.x}));
- const sc=scenes().map(x=>({prompt:x.p,duration_s:x.d>0?x.d:(+$("dd").value||15),first_frame:x.f,last_frame:x.l,hard_cut:x.k,dialogue:sp(x.dl),sound:x.sn,camera_view:x.v,references:x.rr,seed:x.s===""?null:Number(x.s)}));
+ const sc=scenes().map(x=>({prompt:x.p,duration_s:x.d>0?x.d:(+$("dd").value||15),first_frame:x.f,last_frame:x.l,hard_cut:x.k,dialogue:sp(x.dl),sound:x.sn,camera_view:x.v,references:x.rr,seed:x.s===""?null:Number(x.s),use_take:x.tk===""?null:Number(x.tk)}));
  return {_instructions:[
  "HOW TO USE: fill in this JSON template and return ONLY the completed JSON (no commentary, no markdown). Keep every key and the exact structure; do not rename keys. Keys starting with _ are ignored.",
  "story_brief is the premise or long prompt written by the user. Expand it into a full scene list. target_runtime_minutes: make the sum of all scene duration_s match it.",
@@ -753,7 +862,7 @@ function tplGet(){
  "reference_images: one entry per character, location or style sheet. name = short label; description = look, outfit and voice (also the image-generation prompt when options.generate_reference_images is true); filename = image name in ComfyUI input (empty if generating). All of them are linked to every scene unless scenes[].references limits them.",
  "reference_images[].type: character, location or object. It decides which angle prompts are used when options.multi_angle_references is true (front, sides and back for characters; other camera positions for locations). angle_files: leave empty unless the user supplied their own angle images, written as 'front=a.png, back=b.png'. extra_angles: true to create extra angles for this reference, false for a reference that only needs its original image (props, style sheets, background plates).","scenes[].camera_view: front, left, right, back, three-quarter or auto. Set it to match the shot: back when we see a character from behind or the camera looks the opposite way in a location, left or right for profile shots, front for facing the camera. The generator links the reference angle that matches it. Use auto only if unsure.","scenes[].references: leave empty. It is only used when settings.reference_linking is 'list' (each scene's own list of numbers or names such as '1,3'); 'all' links every reference to every scene and 'name' links only references named in the scene.",
  "consistency: style_line = one sentence of visual style shared by every scene; character_bible = array of 'Name: look; voice' lines; global_sound = one line of overall sound design.",
- "music_prompt: one description of the music for the whole film (genre, mood, instruments, tempo); only used when options.music is true.","settings.video_engine is one of mm (MiniMax H3), wan21, wan22, ltx23, ltx25: keep it unless the user asks for a change. settings, options and advanced: keep the current values unless the user asks for a change. advanced lists every page control by its id."],
+ "settings.render_pass: draft (fast, small preview of every scene) or final. scenes_to_render: a list like 3,5,10-14 (empty = all). take_number: 1 for the normal render, higher numbers re-render with new seeds. project_seed keeps reference images identical across passes: do not change it once references look right. scenes[].use_take: which take of that scene the finishing script uses (empty = 1). options.lossless_png_frames saves PNG frames for the finishing script. settings.scene_file_codec is prores, ffv1 or x264; final_codec is h264 or h265; final_crf 12 to 18; lut_file an optional .cube file; film_grain 0 to 20; loudness_lufs about -16. Keep these unless the user asks for a change.","music_prompt: one description of the music for the whole film (genre, mood, instruments, tempo); only used when options.music is true.","settings.video_engine is one of mm (MiniMax H3), wan21, wan22, ltx23, ltx25: keep it unless the user asks for a change. settings, options and advanced: keep the current values unless the user asks for a change. advanced lists every page control by its id."],
  story_brief:"",target_runtime_minutes:null,
  settings:Object.fromEntries(TS.map(t=>{const e=$(t[1]);return [t[0],e.type==="number"?+e.value:e.value];})),
  options:Object.fromEntries(TO.map(t=>[t[0],$(t[1]).checked])),
@@ -792,12 +901,20 @@ function tplLoad(txt){
    c.querySelector(".sl").value=String(x.last_frame||"");c.querySelector(".sk").checked=!!x.hard_cut;
    c.querySelector(".sdl").value=lines(x.dialogue);c.querySelector(".ssn").value=String(x.sound||"");
    {const cv=String(x.camera_view||"auto").toLowerCase(),sv=c.querySelector(".sv");sv.value=[...sv.options].some(o=>o.value===cv)?cv:"auto";}
-   c.querySelector(".srr").value=Array.isArray(x.references)?x.references.join(","):String(x.references||"");ns++;});}
+   c.querySelector(".srr").value=Array.isArray(x.references)?x.references.join(","):String(x.references||"");c.querySelector(".stk").value=x.use_take==null||!isFinite(Number(x.use_take))?"":String(x.use_take);ns++;});}
  else warn.push("no scenes found; existing scenes were kept");
  if(S.resolution_preset===undefined&&(d.advanced&&d.advanced.res)===undefined)resFromWH();
  refresh();
  return "Loaded "+ns+" scene(s) and "+nr+" reference image(s)."+(warn.length?" Check: "+warn.slice(0,5).join("; ")+".":"")+" Review, then generate/download the workflow.";}
 $("bTpl").onclick=()=>{dl("h3_project_template.json",JSON.stringify(tplGet(),null,2),"application/json");$("tplMsg").textContent="Template downloaded. Give it to your AI with your story, then upload the result.";};
+
+$("bSave").onclick=()=>{const nm=($("fin").value||"project").replace(/[^a-z0-9_-]+/gi,"_").replace(/^_+|_+$/g,"")||"project",d=new Date(),z=n=>String(n).padStart(2,"0"),fn="h3_project_"+nm+"_"+d.getFullYear()+z(d.getMonth()+1)+z(d.getDate())+"_"+z(d.getHours())+z(d.getMinutes())+".json";
+ const sd=tplGet();if(!$("bch").value.trim())sd.consistency.character_bible=[];dl(fn,JSON.stringify(sd,null,2),"application/json");$("tplMsg").textContent="Saved "+fn+": every setting, option, scene and reference. Use Load Project to restore it later.";};
+const AUTOK="h3Auto";let autoT=null;
+const autoSave=()=>{clearTimeout(autoT);autoT=setTimeout(()=>{try{const sd=tplGet();if(!$("bch").value.trim())sd.consistency.character_bible=[];localStorage.setItem(AUTOK,JSON.stringify({t:Date.now(),d:sd}));}catch(err){}},800);};
+["input","change","click"].forEach(ev=>document.addEventListener(ev,e=>{if(e.isTrusted)autoSave();},true));
+try{const q=JSON.parse(localStorage.getItem(AUTOK)||"null");if(q&&q.d&&Array.isArray(q.d.scenes)){$("bRestore").classList.remove("hid");$("bRestore").title="Browser backup from "+new Date(q.t).toLocaleString();
+ $("bRestore").onclick=()=>{try{$("tplMsg").textContent="Restored the browser backup from "+new Date(q.t).toLocaleString()+". "+tplLoad(JSON.stringify(q.d));}catch(err){$("tplMsg").textContent="Restore failed: "+err.message;}};}}catch(err){}
 $("bUp").onclick=()=>$("tplFile").click();
 $("tplFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
  r.onload=()=>{try{$("tplMsg").textContent=tplLoad(String(r.result));}catch(err){$("tplMsg").textContent="Upload failed: "+err.message;}e.target.value="";};
@@ -806,6 +923,12 @@ $("bGen").onclick=()=>{const t=gen();window.scrollTo({top:0,behavior:"smooth"});
 $("bClr").onclick=$("bClr2").onclick=()=>{$("out").value="";$("genMsg").textContent="JSON cleared.";};
 $("bPlan").onclick=()=>dl("minimax_h3_plan.json",plan(build()),"application/json");
 $("bFF").onclick=()=>dl("assemble_long_video.sh",ffscript(build()),"text/x-shellscript");
+$("bFin").onclick=()=>{const r=build();dl("finish_"+r.broot+(r.DR?"_draft":"")+".sh",ffscript(r),"text/x-shellscript");$("qMsg").textContent="Finishing script downloaded. Run it inside your ComfyUI output folder (needs ffmpeg). It reads scene files, or lossless PNG frames if you saved them, and writes a master plus one final encode.";};
+$("bTk").onclick=allTakes;
+$("bDS").onclick=()=>{dl("dialogue_sheet.csv",dialogueSheet(),"text/csv");$("qMsg").textContent="Dialogue sheet downloaded: one row per line. Make one audio file per scene (dialogue/scene_NN.wav) with any text-to-speech tool and the finishing script mixes it in.";};
+$("bAud").onclick=()=>{const r=build(true);if(r.E.length){alert("Cannot generate the audio workflow:\n- "+r.E.join("\n- "));return;}dl(r.broot+"_audio_workflow.json",JSON.stringify(r.wf,null,2),"application/json");$("qMsg").textContent="Audio workflow downloaded (ACE-Step music, covers the whole film, fixed seeds). Run it separately; the finishing script mixes the tracks.";};
+$("bSeed").onclick=()=>{$("pseed").value=Math.floor(Math.random()*4294967295);$("qMsg").textContent="New project seed. Reference images, first frames and takes will all change; keep it fixed once you like the references.";refresh();};
+if($("pseed").value==="")$("pseed").value=Math.floor(Math.random()*4294967295);
 const copyOut=()=>{const t=gen();if(!t)return;
  const fb=()=>{$("out").select();document.execCommand("copy");};
  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).catch(fb);else fb();};
