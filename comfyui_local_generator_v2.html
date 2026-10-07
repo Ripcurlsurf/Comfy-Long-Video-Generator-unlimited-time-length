@@ -26,7 +26,7 @@ textarea{resize:vertical;min-height:54px}
 pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px ui-monospace,Consolas,monospace}
 #out{min-height:160px;font:11px ui-monospace,Consolas,monospace}
 .hid{display:none!important}
-.kx{display:none;margin-top:6px}body.kon .kx{display:block}
+.kx{margin-top:6px}
 </style></head><body>
 <header><h1>Minimax-H3 &rarr; ComfyUI workflow generator</h1>
 <small>100% offline &middot; RAM 192 GB &middot; VRAM 32 GB &middot; single local GPU &middot; emits ComfyUI frontend (UI) JSON only</small></header>
@@ -42,6 +42,7 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px ui-monospace,C
 <div><label>Image text encoder file</label><input id="qte" value="qwen3vl_8b_int8_convrot.safetensors"></div>
 <div><label>Image VAE file</label><input id="qvae" value="qwen_image_2.1_vae_bf16.safetensors"></div></div>
 <div data-img="qwen flux2 zimage"><label>Image LoRAs (one per line: filename | strength)</label><textarea id="ilr" style="min-height:40px" placeholder="my_style_lora.safetensors | 0.8"></textarea></div>
+<div class="g" data-img="qwen flux2 zimage"><div><label>Image steps</label><input id="rst" type="number" value="40"></div><div><label>Image CFG / guidance</label><input id="rcfg" type="number" step="0.1" value="1"></div></div>
 <div class="g" data-eng="wan21 wan22">
 <div><label>Diffusion model file</label><input id="wm1" value="wan2.1_i2v_480p_14B_fp16.safetensors"></div>
 <div data-eng="wan22"><label>Low-noise diffusion model file</label><input id="wm2" value="wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors"></div>
@@ -57,69 +58,96 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px ui-monospace,C
 <div><label>Video VAE file</label><input id="lvae" value="LTX23_video_vae_bf16.safetensors"></div>
 <div><label>Audio VAE file</label><input id="lav" value="ltx-2.3-22b-dev.safetensors"></div>
 <div><label>LoRA file</label><input id="llo" value="ltx-2.3-22b-distilled-lora-384.safetensors"></div></div>
+<div class="g" data-eng="mm"><div><label>Text encoder file (needs 5120-dim, the 32B)</label><input id="te" value="qwen3vl_32b_heretic_minimax_h3_nvfp4.safetensors"></div><div><label>Diffusion model file (first and last frame)</label><input id="un" value="minimax_h3_fl2va_bf16.safetensors"></div><div><label>Diffusion model file (reference-to-video)</label><input id="un2" value="minimax_h3_ref2va_pruned_int8_convrot.safetensors"></div><div><label>Video VAE</label><select id="vae"><option>minimax_h3_video_vae_int8_convrot</option><option>minimax_h3_video_vae_fp16</option></select></div></div>
 </section>
-<section><h2>Prompts</h2>
-<label>1. Reference images (character / location / style sheets)</label><div id="refs"></div><div style="margin-top:6px"><button class="s" id="bRef">Add reference image</button> <button class="s" id="bRefRm">Remove last</button></div><div class="cb"><input type="checkbox" id="rfirst"><label for="rfirst">Use the first reference with a filename as the scene 1 first frame (when none is set)</label></div><div id="refHint" style="color:#ff9d5c;font-size:12px;margin-top:6px"></div>
-<label>2. Negative prompt</label><textarea id="neg">low quality, blurry, distorted faces, extra limbs, watermark, text, flickering, jitter, bad anatomy, oversaturated, noisy, artifacts</textarea></section>
-<section><h2>3. Scenes</h2><div id="scenes"></div></section>
-<section><h2>First frame, audio, LoRA</h2><div class="g">
-<div><label>4. First frame mode</label><select id="mode"><option>global_first_frame_scene1_only</option><option>per_scene_manual</option><option selected>last_frame_chain</option></select></div>
-<div><label>5. Global first frame filename</label><input id="gff" placeholder="optional.png"></div>
+<section><h2>Suggested settings</h2>
+<div class="g">
+<div><label>Goal</label><select id="sgG"><option value="preview">Fast preview (quickest, lower quality)</option><option value="balanced" selected>Balanced</option><option value="quality">Best quality (short film)</option><option value="long">Long film (keeps quality over many scenes)</option></select></div>
+<div><label>System RAM (GB)</label><select id="sgR"><option>16</option><option>32</option><option>64</option><option>96</option><option>128</option><option selected>192</option><option>256</option><option>512</option></select></div>
+<div><label>GPU VRAM (GB)</label><select id="sgV"><option>8</option><option>12</option><option>16</option><option>24</option><option selected>32</option><option>48</option><option>80</option><option>96</option></select></div></div>
+<div style="margin-top:8px"><button class="s" id="sgDet">Detect GPU</button> <button id="sgApply">Apply suggested settings</button> <span id="sgGpu" style="font-size:12px;margin-left:8px;color:#8a93a0"></span></div>
+<pre id="sgOut" style="margin-top:8px"></pre>
+<small style="color:#8a93a0">Browsers cannot read your exact VRAM or RAM. Detect GPU reads the graphics card name and fills in its usual VRAM; confirm both values (nvidia-smi shows VRAM). Suggestions update as you change the video model, image model, goal, RAM, VRAM or scenes.</small></section>
+<section><h2>Scenes</h2><div id="scenes"></div><label>Negative prompt (all scenes)</label><textarea id="neg">low quality, blurry, distorted faces, extra limbs, watermark, text, flickering, jitter, bad anatomy, oversaturated, noisy, artifacts</textarea></section>
+<section><h2>Reference images</h2>
+<label>Characters, locations, objects or style sheets (any number)</label><div id="refs"></div><div style="margin-top:6px"><button class="s" id="bRef">Add reference image</button> <button class="s" id="bRefRm">Remove last</button></div><div id="refHint" style="color:#ff9d5c;font-size:12px;margin-top:6px"></div>
+<div class="cb" data-eng="mm"><input type="checkbox" id="rm"><label for="rm">Reference-to-video mode (MiniMaxH3ReferenceToVideo + ref2va model; every reference is linked as a &lt;Picture N&gt; input, no first/last frame)</label></div>
+<div class="cb" data-eng="mm"><input type="checkbox" id="gc" checked><label for="gc">Pass the previous scene's last frame as &lt;Picture 1&gt; in reference mode (continuity between scenes)</label></div>
+<div class="g"><div><label>Which references each scene uses</label><select id="rlink"><option value="all">All references in every scene</option><option value="name">Only references named in the scene prompt or dialogue</option><option value="list">Each scene's own list (set inside the scene)</option></select></div><div data-eng="mm"><label>Reference image fit (keeps the aspect ratio, never stretches)</label><select id="rfit"><option value="pad">Pad to video aspect (no stretching)</option><option value="crop">Center-crop to video aspect (no stretching)</option><option value="orig">Keep original size (uses ref_image_size below)</option></select></div><div data-eng="mm"><label>Reference size mode (ref_image_size)</label><select id="ris"><option>match</option><option>max</option></select></div></div>
+<div class="cb"><input type="checkbox" id="rg"><label for="rg">Generate reference images in the workflow (uses the image engine above)</label></div>
+<div class="g"><div><label>Generated reference width</label><input id="rw" type="number" value="1024"></div><div><label>Generated reference height</label><input id="rh" type="number" value="1024"></div></div>
+<div class="cb"><input type="checkbox" id="rang"><label for="rang">Create several angles of every reference (characters: front, sides, back; locations: other camera positions) and link the angle that matches each scene</label></div>
+<div id="rangBox"><div id="rangMsg" style="color:#ff9d5c;font-size:12px;margin:2px 0"></div>
+<div id="rangNote" style="color:#8a93a0;font-size:12px;margin:2px 0 6px">Angles are generated from each reference's original image with Qwen Image 2.1 or Flux 2, so every angle shows the same person or place. Z-Image Turbo and MiniMax H3 cannot do this: give those references your own angle images on the reference card. Untick "Create extra angles" on any reference that does not need them. Set each scene's camera view in the scene list, or leave it on Auto.</div>
+<div class="g"><div><label>Character angles (one per line: front, left, right, back or three-quarter, then a colon and the angle prompt; delete a line to skip that angle)</label><textarea id="rav" rows="5">front: full body, front view, facing the camera, neutral standing pose
+left: full body, left side profile view, facing left
+right: full body, right side profile view, facing right
+back: full body, seen from behind, back to the camera
+three-quarter: full body, three-quarter front view, turned slightly to the left</textarea></div><div><label>Location angles</label><textarea id="rav2" rows="5">front: main viewpoint, wide establishing view
+left: seen from the left side, camera turned to the left
+right: seen from the right side, camera turned to the right
+back: reverse angle, camera looking in the opposite direction
+three-quarter: high corner angle looking down across the space</textarea></div><div><label>Object angles</label><textarea id="rav3" rows="5">front: front view, centered
+left: left side view
+right: right side view
+back: rear view
+three-quarter: three-quarter view from above</textarea></div></div></div>
+</section>
+<section><h2>First frames and keyframes</h2><div class="g">
+<div><label>First frame mode</label><select id="mode"><option value="global_first_frame_scene1_only">One global first frame for scene 1 only</option><option value="per_scene_manual">First frames you supply per scene</option><option value="last_frame_chain" selected>Chain from the previous scene's last frame</option></select></div>
+<div><label>Global first frame filename</label><input id="gff" placeholder="optional.png"></div>
 <div data-eng="mm"><label>Scene 1 reference source</label><select id="rs"><option value="upload">Uploaded photo (filename at left)</option><option value="gen">Generate from text prompt</option></select></div>
 <div data-eng="mm"><label>Prompt for generated first frame (blank = main + scene 1)</label><textarea id="gp" style="min-height:40px"></textarea></div>
-<div><label>9. LoRA strength</label><input id="ls" type="number" value="0.75" min="0" max="2" step="0.05"></div>
-<div data-eng="mm"><label>10. Video VAE</label><select id="vae"><option>minimax_h3_video_vae_int8_convrot</option><option>minimax_h3_video_vae_fp16</option></select></div></div>
-<div class="cb" data-eng="mm ltx23 ltx25"><input type="checkbox" id="aud"><label for="aud">6. Audio enabled</label></div>
-<div class="cb"><input type="checkbox" id="lora"><label for="lora">7. LoRA enabled</label></div>
-<div class="cb"><input type="checkbox" id="turbo"><label for="turbo">8. Turbo 4-step mode</label></div></section>
-<section><h2>Consistency &amp; long-form options (each can be switched off)</h2>
+</div>
+<div class="cb"><input type="checkbox" id="rfirst"><label for="rfirst">Use the first reference with a filename as the scene 1 first frame (when none is set)</label></div>
 <div class="cb"><input type="checkbox" id="kf"><label for="kf">First + last keyframes per scene (N+1 shared keyframes from your image model)</label></div>
-<div class="g"><div><label>Keyframe filename pattern ({n} = 001, 002...)</label><input id="kfp" value="keyframe_{n}.png"></div>
-<div><label>Render scenes from</label><input id="rf" type="number" min="1" placeholder="1"></div><div><label>to</label><input id="rt" type="number" min="1" placeholder="last"></div></div>
+<div class="g"><div><label>Keyframe filename pattern ({n} = 001, 002...)</label><input id="kfp" value="keyframe_{n}.png"></div></div>
+<div class="cb"><input type="checkbox" id="jf"><label for="jf">Generate scene first frames with the image engine above; scenes between anchors chain from the previous scene's last frame</label></div>
+<div class="g"><div><label>First-frame width</label><input id="kw" type="number" value="1280"></div><div><label>First-frame height</label><input id="kh" type="number" value="720"></div><div><label>Max reference inputs per first frame (0 = engine limit; extras are stitched into sheets, never dropped)</label><input id="jmax" type="number" min="0" value="0"></div><div><label>Re-anchor every N scenes (1 = every scene)</label><input id="jn" type="number" min="1" value="4"></div><div><label>Style suffix for generated frames</label><input id="jsty" value="photorealistic cinematic film still, natural lighting, realistic skin texture"></div></div>
+<div class="cb" data-eng="mm"><input type="checkbox" id="jl"><label for="jl">Use the next scene's first frame as this scene's last frame (continuous shots; ignored on hard cuts)</label></div>
+</section>
+<section><h2>Consistency</h2>
 <div class="cb"><input type="checkbox" id="bib"><label for="bib">Inject consistency bible into every scene prompt</label></div>
 <label>Style line</label><textarea id="bst"></textarea>
 <label>Character bible (one per line: Name: look; voice)</label><textarea id="bch"></textarea>
+</section>
+<section><h2>Dialogue, audio and music</h2>
+<div class="cb" data-eng="mm ltx23 ltx25"><input type="checkbox" id="aud"><label for="aud">Audio enabled</label></div>
 <label>Global sound-design line</label><input id="bsn">
 <div class="cb"><input type="checkbox" id="ext"><label for="ext">Dialogue by external TTS (H3 audio = ambience/effects only)</label></div>
 <div class="cb"><input type="checkbox" id="mu"><label for="mu">Generate one music track for the whole film (ACE-Step) and stop H3 making its own per-scene music</label></div>
 <label>Music prompt (genre, mood, instruments, tempo)</label><textarea id="mp"></textarea>
-<div class="g"><div><label>ACE-Step checkpoint</label><input id="mck" value="ace_step_v1_3.5b.safetensors"></div><div><label>Seconds per track (max 240)</label><input id="mseg" type="number" value="180"></div><div><label>Music volume in final mix (0-1)</label><input id="mvol" type="number" step="0.05" value="0.3"></div></div>
+<div class="g"><div><label>ACE-Step checkpoint</label><input id="mck" value="ace_step_v1_3.5b.safetensors"></div><div><label>Seconds per track (max 240)</label><input id="mseg" type="number" value="180"></div><div><label>Music volume in final mix (0-1)</label><input id="mvol" type="number" step="0.05" value="0.3"></div></div></section>
+<section><h2>Video and sampling</h2><div class="g">
+<div data-eng="mm"><label>Resolution (multiples of 32)</label><select id="res"><option value="512x288">512 x 288 (current default, 16:9)</option><optgroup label="16:9 landscape (official table)"><option value="608x352">608 x 352 (0.2 MP)</option><option value="736x416">736 x 416 (0.3 MP)</option><option value="864x480">864 x 480 (0.4 MP)</option><option value="960x544">960 x 544 (0.5 MP)</option><option value="1056x608">1056 x 608 (0.6 MP)</option><option value="1152x640">1152 x 640 (0.7 MP)</option><option value="1216x672">1216 x 672 (0.8 MP)</option><option value="1280x736">1280 x 736 (0.9 MP)</option><option value="1344x768">1344 x 768 (0.98 MP, official 768p)</option></optgroup><optgroup label="9:16 portrait"><option value="352x608">352 x 608 (0.2 MP)</option><option value="416x736">416 x 736 (0.3 MP)</option><option value="480x864">480 x 864 (0.4 MP)</option><option value="544x960">544 x 960 (0.5 MP)</option><option value="608x1056">608 x 1056 (0.6 MP)</option><option value="640x1152">640 x 1152 (0.7 MP)</option><option value="672x1216">672 x 1216 (0.8 MP)</option><option value="736x1280">736 x 1280 (0.9 MP)</option><option value="768x1344">768 x 1344 (0.98 MP)</option></optgroup><optgroup label="1:1 square"><option value="448x448">448 x 448 (0.2 MP)</option><option value="544x544">544 x 544 (0.3 MP)</option><option value="640x640">640 x 640 (0.4 MP)</option><option value="704x704">704 x 704 (0.5 MP)</option><option value="768x768">768 x 768 (0.6 MP)</option><option value="832x832">832 x 832 (0.7 MP)</option><option value="896x896">896 x 896 (0.8 MP)</option><option value="960x960">960 x 960 (0.9 MP)</option><option value="992x992">992 x 992 (0.98 MP)</option></optgroup><optgroup label="4:3"><option value="512x384">512 x 384 (0.2 MP)</option><option value="640x480">640 x 480 (0.3 MP)</option><option value="736x544">736 x 544 (0.4 MP)</option><option value="832x640">832 x 640 (0.5 MP)</option><option value="896x672">896 x 672 (0.6 MP)</option><option value="960x704">960 x 704 (0.7 MP)</option><option value="1024x768">1024 x 768 (0.8 MP)</option><option value="1088x832">1088 x 832 (0.9 MP)</option><option value="1152x864">1152 x 864 (0.98 MP)</option></optgroup><optgroup label="3:4"><option value="384x512">384 x 512 (0.2 MP)</option><option value="480x640">480 x 640 (0.3 MP)</option><option value="544x736">544 x 736 (0.4 MP)</option><option value="608x800">608 x 800 (0.5 MP)</option><option value="672x896">672 x 896 (0.6 MP)</option><option value="736x992">736 x 992 (0.7 MP)</option><option value="768x1024">768 x 1024 (0.8 MP)</option><option value="832x1120">832 x 1120 (0.9 MP)</option><option value="864x1152">864 x 1152 (0.98 MP)</option></optgroup><optgroup label="21:9 ultrawide"><option value="672x288">672 x 288 (0.2 MP)</option><option value="832x352">832 x 352 (0.3 MP)</option><option value="960x416">960 x 416 (0.4 MP)</option><option value="1088x480">1088 x 480 (0.5 MP)</option><option value="1184x512">1184 x 512 (0.6 MP)</option><option value="1280x544">1280 x 544 (0.7 MP)</option><option value="1376x576">1376 x 576 (0.8 MP)</option><option value="1440x608">1440 x 608 (0.9 MP)</option><option value="1504x640">1504 x 640 (0.98 MP)</option></optgroup><option value="custom">Custom (enter width and height)</option></select></div>
+<div id="wW"><label>Width</label><input id="w" type="number" value="512"></div>
+<div id="hW"><label>Height</label><input id="h" type="number" value="288"></div>
+<div><label>FPS</label><input id="fps" type="number" value="24"></div>
+<div><label>Default scene duration (s)</label><input id="dd" type="number" value="15"></div>
+<div><label>Duration warning threshold (s, blank = none)</label><input id="mx" type="number" value="" placeholder="no limit"></div>
+<div><label>Steps</label><input id="steps" type="number"></div>
+<div><label>CFG</label><input id="cfg" type="number" step="0.1"></div>
+<div><label>Sampler</label><select id="smp"><option>euler</option><option>euler_cfg_pp</option><option>euler_ancestral</option><option>euler_ancestral_cfg_pp</option><option>heun</option><option>heunpp2</option><option>dpm_2</option><option>dpm_2_ancestral</option><option>lms</option><option>dpm_fast</option><option>dpm_adaptive</option><option>dpmpp_2s_ancestral</option><option>dpmpp_sde</option><option>dpmpp_2m</option><option>dpmpp_2m_cfg_pp</option><option>dpmpp_2m_sde</option><option>dpmpp_3m_sde</option><option>ddpm</option><option>lcm</option><option>ipndm</option><option>ipndm_v</option><option>deis</option><option selected>res_multistep</option><option>res_multistep_cfg_pp</option><option>res_multistep_ancestral</option><option>gradient_estimation</option><option>er_sde</option><option>seeds_2</option><option>seeds_3</option><option>sa_solver</option><option>ddim</option><option>uni_pc</option><option>uni_pc_bh2</option></select></div>
+<div><label>Scheduler</label><select id="sch"><option selected>simple</option><option>sgm_uniform</option><option>karras</option><option>exponential</option><option>ddim_uniform</option><option>beta</option><option>normal</option><option>linear_quadratic</option><option>kl_optimal</option></select></div>
+<div><label>Denoise (0-1)</label><input id="dn" type="text" inputmode="decimal" value="1.0"></div>
+<div><label>Seed mode</label><select id="sm"><option value="same_seed_for_all_scenes">Same seed for all scenes</option><option value="random_seed_per_scene">Random seed per scene</option></select></div>
+<div><label>Base seed</label><input id="bs" type="number" value="-1"></div>
+<div><label>Batch size</label><input id="bat" type="number" value="1" min="1"></div>
+<div><label>LoRA strength</label><input id="ls" type="number" value="0.75" min="0" max="2" step="0.05"></div>
+<div><label>Final output filename</label><input id="fin" value="minimax_h3_final_video.mp4"></div>
+</div>
+<div class="cb"><input type="checkbox" id="turbo"><label for="turbo">Turbo 4-step mode</label></div>
+<div class="cb"><input type="checkbox" id="lora"><label for="lora">LoRA enabled</label></div>
+<div class="cb" data-eng="mm"><input type="checkbox" id="ec" checked><label for="ec">EasyCache (speeds up sampling)</label></div>
+<div class="cb" data-eng="mm"><input type="checkbox" id="sage" checked><label for="sage">Sage Attention (needs KJNodes + sageattention installed)</label></div>
+<div class="cb"><input type="checkbox" id="sv" checked><label for="sv">Save individual scene MP4s (previews only, never the final result)</label></div>
+</section>
+<section><h2>Long films and workflow size</h2><div class="g"><div><label>Render scenes from</label><input id="rf" type="number" min="1" placeholder="1"></div><div><label>to</label><input id="rt" type="number" min="1" placeholder="last"></div></div>
 <div class="cb"><input type="checkbox" id="nj"><label for="nj">Skip in-graph join (join with ffmpeg; saves RAM on long films)</label></div>
 <div class="cb"><input type="checkbox" id="exp"><label for="exp">Enable plan JSON + ffmpeg assemble script export</label></div>
 <div class="cb"><input type="checkbox" id="lk" checked><label for="lk">Force scenes to generate strictly in order (adds a hidden dependency link from each scene to the previous one)</label></div>
-<div class="cb"><input type="checkbox" id="sg" checked><label for="sg">Pack each scene into a subgraph node (far fewer nodes, keeps ComfyUI responsive on long films)</label></div></section>
-<section><h2>Reference images &amp; image generation</h2>
-<div class="cb" data-eng="mm"><input type="checkbox" id="rm"><label for="rm">Reference-to-video mode (MiniMaxH3ReferenceToVideo + ref2va model; every reference is linked as a &lt;Picture N&gt; input, no first/last frame)</label></div>
-<div class="g" data-eng="mm"><div><label>Ref2va diffusion model file</label><input id="un2" value="minimax_h3_ref2va_pruned_int8_convrot.safetensors"></div><div><label>Reference image fit (keeps the aspect ratio, never stretches)</label><select id="rfit"><option value="pad">Pad to video aspect (no stretching)</option><option value="crop">Center-crop to video aspect (no stretching)</option><option value="orig">Keep original size (uses ref_image_size below)</option></select></div><div><label>ref_image_size</label><select id="ris"><option>match</option><option>max</option></select></div></div>
-<div class="cb" data-eng="mm"><input type="checkbox" id="gc" checked><label for="gc">Pass the previous scene's last frame as &lt;Picture 1&gt; in reference mode (continuity between scenes)</label></div>
-<div class="cb"><input type="checkbox" id="rsel"><label for="rsel">Use the per-scene "Reference images for this scene" lists (off = every scene links every reference, including ones added later)</label></div>
-<div class="cb" data-eng="mm"><input type="checkbox" id="rauto"><label for="rauto">Only link references whose name appears in the scene prompt/dialogue (off = every scene gets all references)</label></div>
-<div class="g"><div><label>Reference image width</label><input id="rw" type="number" value="1024"></div><div><label>Reference image height</label><input id="rh" type="number" value="1024"></div><div data-img="qwen flux2 zimage"><label>Image steps</label><input id="rst" type="number" value="40"></div><div data-img="qwen flux2 zimage"><label>Image CFG / guidance</label><input id="rcfg" type="number" step="0.1" value="1"></div></div>
-<div class="cb"><input type="checkbox" id="rg"><label for="rg">Generate reference images in the workflow (uses the image engine above)</label></div>
-<div class="cb"><input type="checkbox" id="jf"><label for="jf">Generate scene first frames with the image engine above; scenes between anchors chain from the previous scene's last frame</label></div>
-<div class="g"><div><label>First-frame width</label><input id="kw" type="number" value="1280"></div><div><label>First-frame height</label><input id="kh" type="number" value="720"></div><div><label>Max reference inputs per first frame (0 = engine limit; extras are stitched into sheets, never dropped)</label><input id="jmax" type="number" min="0" value="0"></div><div><label>Re-anchor every N scenes (1 = every scene)</label><input id="jn" type="number" min="1" value="4"></div><div><label>Photoreal suffix for generated frames</label><input id="jsty" value="photorealistic cinematic film still, natural lighting, realistic skin texture"></div></div>
-<div class="cb" data-eng="mm"><input type="checkbox" id="jl"><label for="jl">Use the next scene's first frame as this scene's last frame (continuous shots; ignored on hard cuts)</label></div></section>
-<section><h2>Video and sampling</h2><div class="g">
-<div data-eng="mm"><label>Resolution (multiples of 32)</label><select id="res"><option value="512x288">512 x 288 (current default, 16:9)</option><optgroup label="16:9 landscape (official table)"><option value="608x352">608 x 352 (0.2 MP)</option><option value="736x416">736 x 416 (0.3 MP)</option><option value="864x480">864 x 480 (0.4 MP)</option><option value="960x544">960 x 544 (0.5 MP)</option><option value="1056x608">1056 x 608 (0.6 MP)</option><option value="1152x640">1152 x 640 (0.7 MP)</option><option value="1216x672">1216 x 672 (0.8 MP)</option><option value="1280x736">1280 x 736 (0.9 MP)</option><option value="1344x768">1344 x 768 (0.98 MP, official 768p)</option></optgroup><optgroup label="9:16 portrait"><option value="352x608">352 x 608 (0.2 MP)</option><option value="416x736">416 x 736 (0.3 MP)</option><option value="480x864">480 x 864 (0.4 MP)</option><option value="544x960">544 x 960 (0.5 MP)</option><option value="608x1056">608 x 1056 (0.6 MP)</option><option value="640x1152">640 x 1152 (0.7 MP)</option><option value="672x1216">672 x 1216 (0.8 MP)</option><option value="736x1280">736 x 1280 (0.9 MP)</option><option value="768x1344">768 x 1344 (0.98 MP)</option></optgroup><optgroup label="1:1 square"><option value="448x448">448 x 448 (0.2 MP)</option><option value="544x544">544 x 544 (0.3 MP)</option><option value="640x640">640 x 640 (0.4 MP)</option><option value="704x704">704 x 704 (0.5 MP)</option><option value="768x768">768 x 768 (0.6 MP)</option><option value="832x832">832 x 832 (0.7 MP)</option><option value="896x896">896 x 896 (0.8 MP)</option><option value="960x960">960 x 960 (0.9 MP)</option><option value="992x992">992 x 992 (0.98 MP)</option></optgroup><optgroup label="4:3"><option value="512x384">512 x 384 (0.2 MP)</option><option value="640x480">640 x 480 (0.3 MP)</option><option value="736x544">736 x 544 (0.4 MP)</option><option value="832x640">832 x 640 (0.5 MP)</option><option value="896x672">896 x 672 (0.6 MP)</option><option value="960x704">960 x 704 (0.7 MP)</option><option value="1024x768">1024 x 768 (0.8 MP)</option><option value="1088x832">1088 x 832 (0.9 MP)</option><option value="1152x864">1152 x 864 (0.98 MP)</option></optgroup><optgroup label="3:4"><option value="384x512">384 x 512 (0.2 MP)</option><option value="480x640">480 x 640 (0.3 MP)</option><option value="544x736">544 x 736 (0.4 MP)</option><option value="608x800">608 x 800 (0.5 MP)</option><option value="672x896">672 x 896 (0.6 MP)</option><option value="736x992">736 x 992 (0.7 MP)</option><option value="768x1024">768 x 1024 (0.8 MP)</option><option value="832x1120">832 x 1120 (0.9 MP)</option><option value="864x1152">864 x 1152 (0.98 MP)</option></optgroup><optgroup label="21:9 ultrawide"><option value="672x288">672 x 288 (0.2 MP)</option><option value="832x352">832 x 352 (0.3 MP)</option><option value="960x416">960 x 416 (0.4 MP)</option><option value="1088x480">1088 x 480 (0.5 MP)</option><option value="1184x512">1184 x 512 (0.6 MP)</option><option value="1280x544">1280 x 544 (0.7 MP)</option><option value="1376x576">1376 x 576 (0.8 MP)</option><option value="1440x608">1440 x 608 (0.9 MP)</option><option value="1504x640">1504 x 640 (0.98 MP)</option></optgroup><option value="custom">Custom (enter width and height)</option></select></div>
-<div id="wW"><label>11. Width</label><input id="w" type="number" value="512"></div>
-<div id="hW"><label>12. Height</label><input id="h" type="number" value="288"></div>
-<div><label>13. FPS</label><input id="fps" type="number" value="24"></div>
-<div><label>14. Default scene duration (s)</label><input id="dd" type="number" value="15"></div>
-<div><label>15. Optional duration warning threshold (s, blank = none)</label><input id="mx" type="number" value="" placeholder="no limit"></div>
-<div><label>16. Steps</label><input id="steps" type="number"></div>
-<div><label>17. CFG</label><input id="cfg" type="number" step="0.1"></div>
-<div><label>18. Sampler</label><select id="smp"><option>euler</option><option>euler_cfg_pp</option><option>euler_ancestral</option><option>euler_ancestral_cfg_pp</option><option>heun</option><option>heunpp2</option><option>dpm_2</option><option>dpm_2_ancestral</option><option>lms</option><option>dpm_fast</option><option>dpm_adaptive</option><option>dpmpp_2s_ancestral</option><option>dpmpp_sde</option><option>dpmpp_2m</option><option>dpmpp_2m_cfg_pp</option><option>dpmpp_2m_sde</option><option>dpmpp_3m_sde</option><option>ddpm</option><option>lcm</option><option>ipndm</option><option>ipndm_v</option><option>deis</option><option selected>res_multistep</option><option>res_multistep_cfg_pp</option><option>res_multistep_ancestral</option><option>gradient_estimation</option><option>er_sde</option><option>seeds_2</option><option>seeds_3</option><option>sa_solver</option><option>ddim</option><option>uni_pc</option><option>uni_pc_bh2</option></select></div>
-<div><label>19. Scheduler</label><select id="sch"><option selected>simple</option><option>sgm_uniform</option><option>karras</option><option>exponential</option><option>ddim_uniform</option><option>beta</option><option>normal</option><option>linear_quadratic</option><option>kl_optimal</option></select></div>
-<div><label>Denoise (0-1)</label><input id="dn" type="text" inputmode="decimal" value="1.0"></div>
-<div><label>20. Seed mode</label><select id="sm"><option>same_seed_for_all_scenes</option><option>random_seed_per_scene</option></select></div>
-<div><label>21. Base seed</label><input id="bs" type="number" value="-1"></div>
-<div><label>22. Batch size</label><input id="bat" type="number" value="1" min="1"></div>
-<div data-eng="mm"><label>Text encoder file (needs 5120-dim, the 32B)</label><input id="te" value="qwen3vl_32b_heretic_minimax_h3_nvfp4.safetensors"></div>
-<div data-eng="mm"><label>Diffusion model file</label><input id="un" value="minimax_h3_fl2va_bf16.safetensors"></div>
-<div><label>24. Final output filename</label><input id="fin" value="minimax_h3_final_video.mp4"></div></div>
-<div class="cb" data-eng="mm"><input type="checkbox" id="ec" checked><label for="ec">EasyCache (speeds up sampling)</label></div>
-<div class="cb" data-eng="mm"><input type="checkbox" id="sage" checked><label for="sage">Sage Attention (needs KJNodes + sageattention installed)</label></div>
-<div class="cb"><input type="checkbox" id="sv" checked><label for="sv">Save individual scene MP4s (previews only, never the final result)</label></div></section>
+<div class="cb"><input type="checkbox" id="sg" checked><label for="sg">Pack each scene into a subgraph node (far fewer nodes, keeps ComfyUI responsive on long films)</label></div>
+</section>
 <section><h2>Long-film quality (stops detail loss between scenes)</h2>
 <div class="cb"><input type="checkbox" id="rfs"><label for="rfs">Sharpen each chained frame before the next scene starts</label></div>
 <div class="g"><div><label>Sharpen strength (0-1)</label><input id="rsa" type="number" min="0" max="1" step="0.05" value="0.4"></div></div>
@@ -141,13 +169,13 @@ const DESC={LoraLoaderModelOnly:"ComfyUI core LoRA loader; NOT present in the re
 let cnt=0;
 function addScene(p,d,f,s){
  cnt++;const c=document.createElement("div");c.className="sc";
- c.innerHTML='<b></b><label>Scene prompt</label><textarea class="sp"></textarea><div class="g"><div><label>Duration (s)</label><input class="sd" type="number" step="0.5"></div><div><label>First frame filename (optional)</label><input class="sf"></div><div><label>Seed (empty = inherit)</label><input class="ss" type="number"></div></div><div class="kx"><div class="g"><div><label>Last frame filename (optional)</label><input class="sl"></div><div class="cb"><input type="checkbox" class="sk"><label>Hard cut before this scene</label></div></div><label>Dialogue (one per line, Speaker: line)</label><textarea class="sdl"></textarea><label>Scene sound design (optional)</label><input class="ssn"><label>Reference images for this scene (numbers or names; blank = auto)</label><input class="srr"></div><div class="fr"></div>';
+ c.innerHTML='<b></b><label>Scene prompt</label><textarea class="sp"></textarea><div class="g"><div><label>Duration (s)</label><input class="sd" type="number" step="0.5"></div><div><label>First frame filename (optional)</label><input class="sf"></div><div><label>Seed (empty = inherit)</label><input class="ss" type="number"></div><div class="rvw"><label>Camera view of the subjects (picks the matching reference angle)</label><select class="sv"><option value="auto">Auto (read from the prompt)</option><option value="front">Front</option><option value="left">Left side</option><option value="right">Right side</option><option value="back">Back</option><option value="three-quarter">Three-quarter</option></select></div></div><div class="cb"><input type="checkbox" class="sk"><label>Hard cut before this scene (starts a new shot; nothing carries over from the previous scene)</label></div><div class="kx"><div class="g"><div><label>Last frame filename (optional)</label><input class="sl"></div></div><label>Dialogue (one per line, Speaker: line)</label><textarea class="sdl"></textarea><label>Scene sound design (optional)</label><input class="ssn"><div class="rlw"><label>Reference images for this scene (numbers or names, such as 1,3 or Maya)</label><input class="srr"></div></div><div class="fr"></div>';
  c.querySelector(".sp").value=p||"";c.querySelector(".sd").value=d||$("dd").value||15;
  c.querySelector(".sf").value=f||"";c.querySelector(".ss").value=s==null?"":s;
  $("scenes").appendChild(c);renum();
 }
 function renum(){[...document.querySelectorAll(".sc")].forEach((c,i)=>c.querySelector("b").textContent="Scene "+(i+1));}
-function scenes(){return [...document.querySelectorAll(".sc")].map(c=>({p:c.querySelector(".sp").value.trim(),d:parseFloat(c.querySelector(".sd").value),f:c.querySelector(".sf").value.trim(),s:c.querySelector(".ss").value.trim(),l:c.querySelector(".sl").value.trim(),k:c.querySelector(".sk").checked,dl:c.querySelector(".sdl").value.trim(),sn:c.querySelector(".ssn").value.trim(),rr:c.querySelector(".srr").value.trim(),el:c}));}
+function scenes(){return [...document.querySelectorAll(".sc")].map(c=>({p:c.querySelector(".sp").value.trim(),d:parseFloat(c.querySelector(".sd").value),f:c.querySelector(".sf").value.trim(),s:c.querySelector(".ss").value.trim(),l:c.querySelector(".sl").value.trim(),k:c.querySelector(".sk").checked,dl:c.querySelector(".sdl").value.trim(),sn:c.querySelector(".ssn").value.trim(),rr:c.querySelector(".srr").value.trim(),v:c.querySelector(".sv").value,el:c}));}
 function autofill(){
  const t=$("turbo").checked;
  const v=$("ve").value,st=v==="mm"||v.startsWith("wan")?(t?4:20):(t?8:20),cf=t?1.0:(v==="mm"?5.0:(v==="wan21"?6.0:(v==="wan22"?3.5:3.0)));
@@ -188,7 +216,7 @@ function build(){
  if(mxv!==""&&total>+mxv)W.push("Total duration "+total+"s is above your warning threshold of "+mxv+"s (not blocking).");
  if(w%16||h%16)W.push("Width/height not divisible by 16.");
  if(!nj){const gb=frames*w*h*12/1e9;if(gb>40)W.push("In-graph join holds ~"+Math.round(gb)+" GB of float frames (plus copies). Tick option D and join with ffmpeg.");}
- if(!$("rm").checked&&refs().some(r=>r.f))W.push("Reference images are NOT linked to MiniMax in this mode: the first-frame model has no reference inputs. Tick 'Reference-to-video mode' to link them as <Picture N>.");
+ if(!$("rm").checked&&refs().some(r=>r.f))W.push(MMV?"Reference images are NOT linked to MiniMax in this mode: the first-frame model has no reference inputs. Tick 'Reference-to-video mode' to link them as <Picture N>.":"The selected video model has no reference-image inputs. References only influence the video through the scene first frames generated by the image model (tick 'Generate scene first frames', with Qwen Image 2.1 or Flux 2).");
  if(kfOn)W.push("Keyframes ON: "+(kc-1)+" images ("+kn(1)+" ... "+kn(kc-1)+" unless overridden) must be in ComfyUI/input. Last frame feeds H3's last_frame input; first-frame mode and generated reference are ignored.");
  if(turbo&&!lora)W.push("turbo LoRA may be required for 4-step sampling");
  if(+$("bat").value>1)W.push("Batch size ignored: MiniMaxH3ImageToVideo has no batch widget.");
@@ -197,8 +225,8 @@ function build(){
  W.push("Negative prompt and CFG are not wired: the reference graph uses BasicGuider (no CFG).");
  if(mode==="last_frame_chain"&&aud)W.push("Chain trims 1 duplicate frame per join; audio is not trimmed (same as the reference graph).");
  let nid=0,lid=0;const nodes=[],links=[],ph={};
- const N=(type,title,x,y,wv,ins,outs)=>{const n={id:++nid,type:type,pos:[x,y],size:[300,120],flags:{},order:nid-1,mode:0,
-  inputs:ins.map(a=>Object.assign({name:a[0],type:a[1],link:null},a[2]||{})),
+ const N=(type,title,x,y,wv,ins,outs)=>{const n={id:++nid,type:type,pos:[x,y],size:[type==='MiniMaxH3ReferenceToVideo'?420:300,Math.max(120,70+24*Math.max(ins.length,outs.length))+(type==='MiniMaxH3ReferenceToVideo'?160:0)],flags:{},order:nid-1,mode:0,
+  inputs:ins.map(a=>Object.assign({name:a[0],localized_name:a[0],type:a[1],link:null},a[2]||{})),
   outputs:outs.map((a,i)=>({name:a[0],type:a[1],links:[],slot_index:i})),title:title,
   properties:{"Node name for S&R":type},widgets_values:wv};
   nodes.push(n);if(DESC[type])ph[type]=DESC[type];return n;};
@@ -290,12 +318,48 @@ function build(){
    const sa=N("SaveAudioMP3","Save Music "+n,x,2600,["audio/"+base+"_music","V0"],[["audio","AUDIO"]],[]);L(da,0,sa,0);}}
  const rnm={};
  const rNode=o=>{if(o.r.node)return o.r.node;if(!rnm[o.i])rnm[o.i]=N("LoadImage","Reference "+(o.i+1),-2550,-1000+o.i*150,[o.r.f,"image"],[],[["IMAGE","IMAGE"],["MASK","MASK"]]);return rnm[o.i];};
- const refLog={};
- const pick=s=>{const list=RA.map((r,i)=>({r:r,i:i})).filter(o=>o.r.node||o.r.f),sel=($("rsel").checked?(s.rr||""):"").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);let m;
+ const AV=$("rang").checked,VU={},VL={front:"front view",left:"left side view",right:"right side view",back:"back view","three-quarter":"three-quarter view"};
+ const avp=t=>{const m={};t.split("\n").forEach(l=>{const q=l.match(/^\s*(front|left|right|back|three-quarter)\s*[:|]\s*(.+)$/i);if(q)m[q[1].toLowerCase()]=q[2].trim();});return m;};
+ const AVS={character:avp($("rav").value),location:avp($("rav2").value),object:avp($("rav3").value)};
+ const autoView=t=>{t=(t||"").toLowerCase();
+  if(/from behind|back view|rear view|seen from the back|facing away|back to (the )?camera|walks? away|turns? away|reverse angle|opposite (side|direction)|looking back at the room/.test(t))return "back";
+  if(/left (side|profile)|profile left|facing left|from the left/.test(t))return "left";
+  if(/right (side|profile)|profile right|facing right|from the right/.test(t))return "right";
+  if(/in profile|side view|side profile|from the side|sideways|pans? (left|right) across/.test(t))return "left";
+  if(/three[- ]quarter|3\/4|over[- ]the[- ]shoulder|high angle|corner/.test(t))return "three-quarter";
+  return "front";};
+ const viewOf=s=>(s.v&&s.v!=="auto")?s.v:autoView(s.p+" "+(s.c||""));
+ if(AV){
+  const canGen=IE==="qwen"||IE==="flux2";
+  if(!canGen&&RA.some(r=>(r.node||r.f)&&r.x&&!r.a))W.push("Multi-angle references: "+IEN[IE]+" cannot take the original image as input, so angles are not generated. Pick Qwen Image 2.1 or Flux 2 as the image model, or fill in 'Your own angle images' on each reference card.");
+  const sty0=$("bst").value.trim(),rw0=+$("rw").value||1024,rh0=+$("rh").value||1024;
+  RA.forEach((r,i)=>{if(!(r.node||r.f)||!r.x)return;const map={},own={};
+   (r.a||"").split(",").forEach(p=>{const q=p.split("="),k=(q[0]||"").trim().toLowerCase(),f=(q.slice(1).join("=")||"").trim();if(VL[k]&&f)own[k]=f;});
+   const nm=r.n||("reference "+(i+1)),ty=r.t||"character",set=AVS[ty]||{},keys=Object.keys(VL).filter(k=>own[k]||set[k]);
+   keys.forEach((k,j)=>{let nd=null;
+    if(own[k])nd=N("LoadImage","Reference "+(i+1)+" "+VL[k],-2550,-1000+(RA.length+i*5+j)*150,[own[k],"image"],[],[["IMAGE","IMAGE"],["MASK","MASK"]]);
+    else if(canGen){const org=r.node||(()=>{const o={r:r,i:i};return rNode(o);})(),what=ty==="location"?"place":ty==="object"?"object":"character",
+      same=ty==="location"?"identical architecture, layout, furniture, props, colours, lighting, time of day and art style":ty==="object"?"identical shape, materials, colours, markings and art style":"identical face, hair, body build, age, clothing, colours, accessories and art style";
+     const pr="The reference image shows "+nm+(r.d?" ("+r.d+")":"")+". Show the exact same "+what+": "+same+". "+set[k]+". "+(ty==="location"?"No people. ":"Plain neutral background, even lighting, one subject only. ")+"Do not redesign anything"+(sty0?". "+sty0:"");
+     const xx=-1600+(i*5+j)*600,dc=imgGen("Ref "+(i+1)+" "+VL[k],xx,-3900,pr,rw0,rh0,bsv<0?rnd+i:bsv+i,[org]);
+     N("SaveImageAdvanced","Save Ref "+(i+1)+" "+VL[k],xx,dc.pos[1]+150,["ref/"+(r.f||("reference_"+(i+1))).replace(/\.[a-z0-9]+$/i,"")+"_"+k,"png","8-bit","sRGB"],[["images","IMAGE"]],[]);L(dc,0,nodes[nodes.length-1],0);nd=dc;}
+    if(nd)map[k]=nd;});
+   VU[i]=map;});
+  W.push("Multi-angle references: each reference is generated from its original image in "+Object.keys(VL).length+" possible angles (saved to ComfyUI/output/ref/). A scene links the original plus the angle that matches its camera view, so a back shot gets the back view and a side shot gets the side view. Scene camera view comes from the scene's own setting, or is read from its prompt when set to Auto.");
+ }
+ const refLog={},vLog={};
+ const pick=s=>{const list=RA.map((r,i)=>({r:r,i:i})).filter(o=>o.r.node||o.r.f),sel=($("rlink").value==="list"?(s.rr||""):"").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);let m;
   if(sel.length)m=list.filter(o=>sel.includes(String(o.i+1))||(o.r.n&&sel.includes(o.r.n.toLowerCase())));
-  else if($("rauto").checked){const hay=(s.p+" "+s.dl).toLowerCase();m=list.filter(o=>o.r.n&&hay.includes(o.r.n.toLowerCase()));if(!m.length)m=list;}else m=list;
-  const lk=m.map(o=>o.i+1).join(",")||"none";(refLog[lk]=refLog[lk]||[]).push(s.gi+1);
-  return m;};
+  else if($("rlink").value==="name"){const hay=(s.p+" "+s.dl).toLowerCase();m=list.filter(o=>o.r.n&&hay.includes(o.r.n.toLowerCase()));if(!m.length)m=list;}else m=list;
+  const lk=m.map(o=>o.i+1).join(",")||"none",ga=refLog[lk]=refLog[lk]||[];if(ga[ga.length-1]!==s.gi+1)ga.push(s.gi+1);
+  if(!AV)return m;
+  const v=viewOf(s),out=[];let vm=0;
+  m.forEach(o=>{const nm=o.r.n||("reference "+(o.i+1)),mp=VU[o.i]||{};
+   out.push({r:Object.assign({},o.r,{n:nm+", original image"}),i:o.i});
+   const vn=mp[v]||(v!=="front"?null:null);
+   if(vn){vm++;out.push({r:{n:nm+", "+VL[v],d:"",node:vn,f:"view"},i:1000+o.i*10+Object.keys(VL).indexOf(v)});}});
+  const miss=m.filter(o=>o.r.x&&!(VU[o.i]||{})[v]).length,vk=v+(miss?" (missing for "+miss+" reference(s))":""),va=vLog[vk]=vLog[vk]||[];if(va[va.length-1]!==s.gi+1)va.push(s.gi+1);
+  return out;};
  const pcache={},refName=o=>o.r.n||"reference "+(o.i+1);
  const packRefs=(items,cap)=>{const key=items.map(o=>o.i).join(",")+"/"+cap;if(pcache[key])return pcache[key];let res;
   if(items.length<=cap)res=items.map(o=>({n:rNode(o),l:refName(o),d:o.r.d}));
@@ -316,13 +380,13 @@ function build(){
   const ri=j=>["ref_images.ref_image_"+j,"IMAGE",{shape:7,label:"ref_image_"+j}],ins=[["clip","CLIP"],V,["audio_vae","VAE"]];
   const tot=pk.length+ld,fitted=pk.map(q=>fitNode(q.n));for(let j=0;j<tot;j++)ins.push(ri(j));ins.push(ri(tot));
   ins.push(["ref_videos.ref_video_0","IMAGE",{shape:7,label:"ref_video_0"}],["ref_video_audios.ref_video_audio_0","AUDIO",{shape:7,label:"ref_video_audio_0"}],["ref_audios.ref_audio_0","AUDIO",{shape:7,label:"ref_audio_0"}],["prompt","STRING",{widget:{name:"prompt"}}],WI("width"),WI("height"),WI("length"),["ref_image_size","COMBO",{widget:{name:"ref_image_size"}}]);
-  const c=N("MiniMaxH3ReferenceToVideo","Segment "+t+" Reference Conditioning",x,-280,[(tag?"Reference images: "+tag+". ":"")+(s.c||""),w,h,len,$("ris").value],ins,[["positive","CONDITIONING"],["LATENT","LATENT"]]);
+  const c=N("MiniMaxH3ReferenceToVideo","Segment "+t+" Reference Conditioning",x,-280,[(tag?"Reference images: "+tag+". ":"")+(AV?"Camera view of the subjects: "+VL[viewOf(s)]+"; use the pictures labelled with that view for how each subject looks from this angle and keep every subject identical to its original image. ":"")+(s.c||""),w,h,len,$("ris").value],ins,[["positive","CONDITIONING"],["LATENT","LATENT"]]);
   L(ck,0,c,0);L(vv,0,c,1);L(av,0,c,2);const srcs=(lead?[lead]:[]).concat(fitted);srcs.forEach((n0,j)=>L((j===0&&bl)?bl(n0):n0,0,c,3+j));return c;};
  if(RM)RA.forEach((r,i)=>{if(!r.node&&r.f)rNode({r:r,i:i});});
  const qf=[],f0=nid;let fids=[];
  const qFirst=(s,i)=>{const x=-800+i*750,t=s.gi+1,sty=$("bst").value.trim(),cap=parseInt($("jmax").value,10)||0,m0=pick(s),canRef=IE==="qwen"||IE==="flux2",pk=canRef?packRefs(m0,cap>0?cap:(IE==="qwen"?16:999)):[];
   const tag=canRef?pk.map((q,j)=>"Picture "+(j+1)+": "+q.l+(q.d?" ("+q.d+")":"")).join("; "):m0.map(o=>(o.r.n?o.r.n+(o.r.d?" ("+o.r.d+")":""):o.r.d)).filter(Boolean).join("; ");
-  const pr=(tag?(canRef?"Reference images - ":"Subjects: ")+tag+". ":"")+"Opening frame of the shot: "+s.p+(sty?". "+sty:"")+($("jsty").value.trim()?". "+$("jsty").value.trim():"");
+  const pr=(tag?(canRef?"Reference images - ":"Subjects: ")+tag+". ":"")+(AV&&canRef?"Camera view of the subjects: "+VL[viewOf(s)]+", keep each subject identical to its original image. ":"")+"Opening frame of the shot: "+s.p+(sty?". "+sty:"")+($("jsty").value.trim()?". "+$("jsty").value.trim():"");
   const dc=imgGen("First Frame "+t,x,-1700,pr,+$("kw").value||1280,+$("kh").value||720,bsv<0?rnd+s.gi:bsv+s.gi,canRef?pk.map(q=>q.n):[]);
   const sv=N("SaveImageAdvanced","Save First Frame "+t,x,dc.pos[1]+150,["first_frames/"+base+"_first_"+String(t).padStart(2,"0"),"png","8-bit","sRGB"],[["images","IMAGE"]],[]);L(dc,0,sv,0);
   return dc;};
@@ -334,7 +398,7 @@ function build(){
  if(MMV&&(w%32||h%32))W.push("MiniMax works best with width and height in multiples of 32.");
  if(JF&&Math.abs((+$("kw").value||1280)/(+$("kh").value||720)-w/h)>0.02)W.push("First-frame size "+($("kw").value||1280)+"x"+($("kh").value||720)+" has a different aspect ratio from the video "+w+"x"+h+", so the first frame may be stretched or cropped. Set the first-frame size to the same aspect.");
  if(RM){W.push("Reference mode: scenes use MiniMaxH3ReferenceToVideo; first/last-frame, keyframe, chain and 'first reference as first frame' options are ignored. Prompts get <Picture N> tags in connection order. The node takes at most 9 images, so any extra references are stitched into sheets and still linked.");
-  if(!RA.some(r=>r.node||r.f))W.push("Reference mode is on but no reference has an image filename (or generation prompt with F on).");
+  if(!RA.some(r=>r.node||r.f))W.push("Reference mode is on but no reference has an image filename (or a generation prompt with 'Generate reference images' on).");
   if(w%32||h%32)W.push("Reference mode: width/height should be multiples of 32.");}
  const ST=+$("steps").value||20,CF=+$("cfg").value||1,BT=+$("bat").value||1;
  const addLora=(src,file,ttl,y)=>{if(!lora||!file)return src;const n=N("LoraLoaderModelOnly",ttl,-1950,y,[file,+$("ls").value],[M],[["MODEL","MODEL"]]);L(src,0,n,0);return n;};
@@ -427,7 +491,7 @@ function build(){
   const mk=f=>N("LoadImage","First Frame "+t,x,-620,[f,"image"],[],[["IMAGE","IMAGE"],["MASK","MASK"]]);
   if(RM){img=null;}else if(JF&&qf[i]){img=qf[i];}else if(JF){img=lf[i-1];chained=true;}else if(kfOn){img=(s.gi===0&&!s.f&&refImg&&$("rfirst").checked)?refImg:mk(s.sf);}else if(mode==="global_first_frame_scene1_only"){if(i===0)img=gi();}
   else if(mode==="per_scene_manual"){if(s.f)img=mk(s.f);else if(i===0)img=gi();}
-  else if(s.f)img=mk(s.f);else if(i===0)img=gi();else{img=lf[i-1];chained=true;}
+  else if(s.f)img=mk(s.f);else if(i===0)img=gi();else if(s.k){img=null;}else{img=lf[i-1];chained=true;}
   const blend=src=>{const b=N("ImageBlend","Order Lock "+t,x,-450,[0,"normal"],[["image1","IMAGE"],["image2","IMAGE"]],[["IMAGE","IMAGE"]]);L(src,0,b,0);L(prevTok,0,b,1);return b;};
   const lockNow=LK&&i>0&&prevTok;
   if(!RM&&LK&&i>0&&!img)unl++;
@@ -435,7 +499,7 @@ function build(){
   const seed=s.s!==""&&!isNaN(+s.s)?+s.s:($("sm").value==="same_seed_for_all_scenes"?(bsv<0?rnd:bsv):(bsv<0?Math.floor(Math.random()*4294967295):bsv+s.gi));
   const MMR=!MMV?altScene(s,x,t,len,img,(chained?CONT:"")+(s.c||""),seed):(()=>{
   const nz=N("RandomNoise","Noise "+t,x,200,[seed,"fixed"],[],[["NOISE","NOISE"]]);
-  const c=RM?mkRef(s,x,t,len,lockNow?blend:null,JF?(qf[i]||lf[i-1]):((RM&&GC&&i>0)?lf[i-1]:null)):N("MiniMaxH3ImageToVideo","Segment "+t+" Conditioning",x,-280,[(chained?CONT:"")+(s.c||""),w,h,len],
+  const c=RM?mkRef(s,x,t,len,lockNow?blend:null,JF?(qf[i]||lf[i-1]):((RM&&GC&&i>0&&!s.k)?lf[i-1]:null)):N("MiniMaxH3ImageToVideo","Segment "+t+" Conditioning",x,-280,[(chained?CONT:"")+(s.c||""),w,h,len],
    [["clip","CLIP"],V,["first_frame","IMAGE",{shape:7}],["last_frame","IMAGE",{shape:7}],WI("width"),WI("height"),WI("length")],
    [["positive","CONDITIONING"],["LATENT","LATENT"]]);
   if(!RM){L(ck,0,c,0);L(vv,0,c,1);if(img)L(img,0,c,2);}
@@ -463,7 +527,9 @@ function build(){
   grp.push(nodes.filter(n=>n.id>g0&&!/^Reference /.test(n.title)).map(n=>n.id));
  });
  if(unl)W.push("Order lock: "+unl+" scene(s) have no first-frame image, so they cannot be locked into sequence (use keyframes, per-scene frames, chain or reference mode).");
- {const ks=Object.keys(refLog);if(ks.length&&(RM||JF)){const rng=a=>a.length>3?a[0]+"-"+a[a.length-1]+" ("+a.length+" scenes)":a.join(",");W.push("References linked per scene: "+ks.map(k=>"scene "+rng(refLog[k])+" -> reference "+k).join("; ")+". Total references on the page with an image or generation prompt: "+RA.filter(r=>r.node||r.f).length+".");}}
+ {const ks=Object.keys(refLog);if(ks.length&&(RM||JF)){const rng=a=>a.length>3?a[0]+"-"+a[a.length-1]+" ("+a.length+" scenes)":a.join(",");W.push("References linked per scene: "+ks.map(k=>"scene "+rng(refLog[k])+" -> reference "+k).join("; ")+". Total references on the page with an image or generation prompt: "+RA.filter(r=>r.node||r.f).length+".");}
+  if(AV&&Object.keys(vLog).length&&(RM||JF)){const rng=a=>a.length>3?a[0]+"-"+a[a.length-1]+" ("+a.length+" scenes)":a.join(",");W.push("Camera view linked per scene: "+Object.keys(vLog).map(k=>"scene "+rng(vLog[k])+" -> "+k).join("; ")+".");}
+  if(AV&&!RM&&!JF)W.push("Angle images are generated and saved to ComfyUI/output/ref/ but nothing links them in this setup. Use Reference-to-video mode (MiniMax) or Generate scene first frames (Qwen or Flux 2).");}
  const j0=nid;
  const jx=-800+S.length*750+100;let cur=imgs[0],ca=comps[0],cas=1;
  for(let i=1;!nj&&i<imgs.length;i++){
@@ -535,11 +601,11 @@ function preview(r){
  if(!Object.keys(r.ph).length)add("(none)","ok");
  $("pv").appendChild(x);
 }
-function addRef(n,f,d){const c=document.createElement("div");c.className="rc";
- c.innerHTML='<b></b><div class="g"><div><label>Name / label (e.g. Maya, Harbor town)</label><input class="rn"></div><div><label>Image filename (file in ComfyUI/input, or saved name when generating)</label><input class="rfn" placeholder="maya_sheet.png"></div></div><label>Description (the generation prompt when F is on; look, outfit, voice)</label><textarea class="rd"></textarea>';
- c.querySelector(".rn").value=n||"";c.querySelector(".rfn").value=f||"";c.querySelector(".rd").value=d||"";$("refs").appendChild(c);
+function addRef(n,f,d,t,a,x){const c=document.createElement("div");c.className="rc";
+ c.innerHTML='<b></b><div class="g"><div><label>Name / label (e.g. Maya, Harbor town)</label><input class="rn"></div><div><label>Image filename (file in ComfyUI/input, or saved name when generating)</label><input class="rfn" placeholder="maya_sheet.png"></div></div><div class="rxw"><div class="g"><div><label>Type</label><select class="rt"><option value="character">Character</option><option value="location">Location</option><option value="object">Object</option></select></div><div><label>Your own angle images (optional: front=a.png, left=b.png, back=c.png)</label><input class="ra" placeholder="front=maya_front.png, back=maya_back.png"></div></div><div class="cb"><input type="checkbox" class="rx" checked><label>Create extra angles for this reference (untick if it only needs its original image)</label></div></div><label>Description (the generation prompt when generating references; look, outfit, voice)</label><textarea class="rd"></textarea>';
+ c.querySelector(".rn").value=n||"";c.querySelector(".rfn").value=f||"";c.querySelector(".rd").value=d||"";c.querySelector(".rt").value=["character","location","object"].includes(t)?t:"character";c.querySelector(".ra").value=a||"";c.querySelector(".rx").checked=x!==false;$("refs").appendChild(c);
  [...document.querySelectorAll(".rc")].forEach((x,i)=>x.querySelector("b").textContent="Reference "+(i+1));}
-function refs(){return [...document.querySelectorAll(".rc")].map(c=>({n:c.querySelector(".rn").value.trim(),f:c.querySelector(".rfn").value.trim(),d:c.querySelector(".rd").value.trim()}));}
+function refs(){return [...document.querySelectorAll(".rc")].map(c=>({n:c.querySelector(".rn").value.trim(),f:c.querySelector(".rfn").value.trim(),d:c.querySelector(".rd").value.trim(),t:c.querySelector(".rt").value,a:c.querySelector(".ra").value.trim(),x:c.querySelector(".rx").checked}));}
 function refFirst(){if(!$("rfirst").checked)return "";const r=refs().find(x=>x.f);return r?r.f:"";}
 function refresh(){sync();preview(build());}
 function dl(n,t,m){const u=URL.createObjectURL(new Blob([t],{type:m})),a=document.createElement("a");a.href=u;a.download=n;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);}
@@ -548,10 +614,10 @@ function applyRes(){const r=$("res").value,mm=$("ve").value==="mm";if(mm&&r!=="c
 function resFromWH(){const v=$("w").value+"x"+$("h").value;$("res").value=[...$("res").options].some(o=>o.value===v)?v:"custom";}
 function applyEngine(){const ve=$("ve").value,im=$("ie").value;document.querySelectorAll("[data-img]").forEach(e=>e.classList.toggle("hid",!e.dataset.img.split(" ").includes(im)));document.querySelectorAll("[data-eng]").forEach(e=>e.classList.toggle("hid",!e.dataset.eng.split(" ").includes(ve)));
  [...$("ie").options].forEach(o=>{if(o.value==="h3")o.disabled=ve!=="mm";});if(ve!=="mm"&&$("ie").value==="h3")$("ie").value="qwen";}
-function sync(){applyEngine();applyRes();$("refHint").textContent=(!$("rm").checked&&$("ve").value==="mm"&&refs().some(r=>r.f))?"Not linked to MiniMax yet: tick 'Reference-to-video mode' in the options below so these images are linked as <Picture N>.":"";document.body.classList.toggle("kon",$("kf").checked||$("bib").checked||$("ext").checked||$("rm").checked);$("bPlan").style.display=$("bFF").style.display=$("exp").checked?"":"none";}
+function sync(){applyEngine();applyRes();renderSuggest();const ra=$("rang").checked;$("rangBox").classList.toggle("hid",!ra);document.querySelectorAll(".rxw,.rvw").forEach(e=>e.classList.toggle("hid",!ra));document.querySelectorAll(".rlw").forEach(e=>e.classList.toggle("hid",$("rlink").value!=="list"));$("refHint").textContent=(!$("rm").checked&&$("ve").value==="mm"&&refs().some(r=>r.f))?"Not linked to MiniMax yet: tick 'Reference-to-video mode' in the options below so these images are linked as <Picture N>.":"";document.body.classList.toggle("kon",$("kf").checked||$("bib").checked||$("ext").checked||$("rm").checked);$("bPlan").style.display=$("bFF").style.display=$("exp").checked?"":"none";}
 function plan(r){const sp=t=>t.split("\n").map(x=>x.trim()).filter(Boolean);
- return JSON.stringify({output:r.fin,fps:r.fps,width:r.w,height:r.h,style:$("bst").value.trim(),characters:sp($("bch").value),reference_images:refs().map(r=>({name:r.n,file:r.f,description:r.d})),global_sound:$("bsn").value.trim(),external_tts:r.ext,
- scenes:r.S0.map((s,i)=>({scene:i+1,prompt:s.p,duration_s:s.d,frames:vl(s.d||0,r.fps),first_frame:r.kfOn?s.sf:s.f,last_frame:r.kfOn?s.lf:s.l,hard_cut:i===0||s.k,dialogue:sp(s.dl),sound:s.sn,segment_prefix:r.base+"_scene_"+String(i+1).padStart(2,"0")}))},null,2);}
+ return JSON.stringify({output:r.fin,fps:r.fps,width:r.w,height:r.h,style:$("bst").value.trim(),characters:sp($("bch").value),reference_images:refs().map(r=>({name:r.n,file:r.f,description:r.d,type:r.t,angle_files:r.a,extra_angles:r.x})),global_sound:$("bsn").value.trim(),external_tts:r.ext,
+ scenes:r.S0.map((s,i)=>({scene:i+1,prompt:s.p,duration_s:s.d,frames:vl(s.d||0,r.fps),first_frame:r.kfOn?s.sf:s.f,last_frame:r.kfOn?s.lf:s.l,hard_cut:i===0||s.k,camera_view:s.v,dialogue:sp(s.dl),sound:s.sn,segment_prefix:r.base+"_scene_"+String(i+1).padStart(2,"0")}))},null,2);}
 function ffscript(r){const T=i=>String(i+1).padStart(2,"0"),st=(1/r.fps).toFixed(6);
  const L=['#!/usr/bin/env bash','# Run inside your ComfyUI output folder (needs ffmpeg). Optional TTS dialogue: dialogue/scene_NN.wav','set -e','mkdir -p seg','ENC="-c:v libx264 -crf 16 -preset medium -pix_fmt yuv420p -c:a aac -b:a 192k -ar 48000"',
  'proc(){','f=$(ls "video/'+r.base+'_scene_$1_"*.mp4 2>/dev/null | head -n1)','[ -z "$f" ] && { echo "missing scene $1"; return; }','[ -s "seg/$1.mp4" ] && return','VF="null"; AF="anull"',
@@ -584,17 +650,65 @@ $("bEx").onclick=()=>{
 $("bRef").onclick=()=>{addRef();refresh();};
 $("bRefRm").onclick=()=>{const c=document.querySelectorAll(".rc");if(c.length>0){c[c.length-1].remove();refresh();}};
 $("rm").addEventListener("change",refresh);
+$("rang").addEventListener("change",()=>{const m=$("rangMsg");m.textContent="";if($("rang").checked){const mm=$("ve").value==="mm";
+ if(mm&&!$("rm").checked&&!$("jf").checked){$("rm").checked=true;m.textContent="Reference-to-video mode was switched on so the references and their angles are linked to MiniMax.";}
+ else if(!mm&&!$("jf").checked){$("jf").checked=true;m.textContent="Generate scene first frames was switched on: Wan and LTX only receive references through the first frames the image model makes.";}}refresh();});
+const GPUS=[[/rtx pro 6000/i,96],[/rtx 6000 ada|l40|a6000/i,48],[/h100|h200/i,80],[/a100/i,40],[/5090/i,32],[/5080/i,16],[/5070 ?ti/i,16],[/5070/i,12],[/4090/i,24],[/4080/i,16],[/4070 ?ti ?super/i,16],[/4070 ?ti|4070/i,12],[/4060 ?ti/i,8],[/4060/i,8],[/3090/i,24],[/3080 ?ti/i,12],[/3080/i,10],[/3070/i,8],[/3060/i,12]];
+function detectGpu(){let name="";try{const c=document.createElement("canvas"),gl=c.getContext("webgl")||c.getContext("experimental-webgl");if(gl){const e=gl.getExtension("WEBGL_debug_renderer_info");name=String(e?gl.getParameter(e.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER)||"");}}catch(err){}
+ const m=GPUS.find(g=>g[0].test(name)),el=$("sgGpu");
+ if(!name){el.textContent="Could not read the graphics card name in this browser. Choose your VRAM manually.";return;}
+ if(!m){el.textContent="Detected: "+name+" (VRAM unknown, choose it manually).";return;}
+ const sel=$("sgV");if(![...sel.options].some(o=>+o.value===m[1])){const o=document.createElement("option");o.textContent=m[1];sel.appendChild(o);}
+ sel.value=String(m[1]);el.textContent="Detected: "+name+" -> usually "+m[1]+" GB VRAM. Please confirm.";refresh();}
+function sgPlan(){
+ const ve=$("ve").value,ie=$("ie").value,goal=$("sgG").value,ram=+$("sgR").value||0,vram=+$("sgV").value||0,t=vram<12?0:vram<20?1:vram<28?2:vram<40?3:4,fam=ve==="mm"?"mm":ve.startsWith("wan")?"wan":"ltx";
+ const sc=scenes(),dd=+$("dd").value||15,fps=+$("fps").value||24,n=sc.length||1,total=sc.reduce((a,x)=>a+(x.d>0?x.d:dd),0)||dd,E=[],N=[];
+ let w,h;
+ if(fam==="mm"){const L=[[608,352],[736,416],[864,480],[960,544],[1152,640],[1344,768]],adj={preview:-2,balanced:-1,quality:t===4?1:0,long:0}[goal];[w,h]=L[Math.max(0,Math.min(5,t+adj))];}
+ else if(fam==="wan"){[w,h]=(t===0||goal==="preview")?[640,384]:((t===4&&(goal==="quality"||goal==="long"))?[1280,720]:[832,480]);}
+ else{const L=[[640,384],[768,512],[960,544],[1152,640],[1280,704]],b=[0,1,2,2,3][t],adj={preview:-2,balanced:-1,quality:t>=3?1:0,long:t>=3?1:0}[goal];[w,h]=L[Math.max(0,Math.min(4,b+adj))];}
+ const turbo=goal==="preview"||(goal==="balanced"&&t<=2)||((goal==="quality"||goal==="long")&&t<=1);
+ const gb=total*fps*w*h*12/1e9,peak=gb*2.5,nj=goal==="long"||peak>ram*0.6,imgOk=ie!=="h3",chain=goal==="long"||(goal==="quality"&&n>4);
+ if(fam==="mm")E.push(["res","Resolution",w+"x"+h]);else{E.push(["w","Width",w]);E.push(["h","Height",h]);}
+ E.push(["turbo","Turbo 4-step mode",turbo]);E.push(["lora","LoRA enabled",turbo]);
+ E.push(["steps","Steps",turbo?(fam==="ltx"?8:4):(goal==="quality"?30:goal==="long"?24:20)]);
+ if(fam==="mm"){E.push(["ec","EasyCache",goal==="preview"||goal==="balanced"]);E.push(["sage","Sage Attention",true]);E.push(["gc","Last frame as <Picture 1> (reference mode)",true]);}
+ E.push(["nj","Skip in-graph join",nj]);E.push(["sg","Subgraph packing",n>6]);E.push(["lk","Force scene order",true]);
+ E.push(["jf","Generate scene first frames",chain]);
+ if(chain){E.push(["jn","Re-anchor every N scenes",goal==="long"?(t>=3?2:3):3]);E.push(["kw","First-frame width",w]);E.push(["kh","First-frame height",h]);}
+ E.push(["rang","Multi-angle references",(goal==="quality"||goal==="long")&&(ie==="qwen"||ie==="flux2")]);E.push(["rfs","Sharpen chained frames",chain]);if(chain)E.push(["rsa","Sharpen strength",0.3]);
+ E.push(["rfi","Image-model refresh of chained frames",chain&&imgOk&&t>=2]);if(chain&&imgOk&&t>=2)E.push(["rfd","Refresh strength",0.3]);
+ E.push(["rfu","Upscale round trip on chained frames",chain&&t<=1&&!(imgOk&&t>=2)]);
+ E.push(["up","Upscale video",goal==="quality"&&t>=2&&nj]);
+ if(imgOk){const st={qwen:{preview:20,balanced:28,quality:40,long:36},flux2:{preview:16,balanced:20,quality:28,long:24},zimage:{preview:6,balanced:8,quality:9,long:8}}[ie];if(st)E.push(["rst","Image steps",st[goal]]);}
+ if(t<=1)N.push("Under 16 GB VRAM: use the int8 / fp8 / nvfp4 quantised model files, close other GPU apps, and try ComfyUI's --lowvram if you run out of memory.");
+ if(vram<16&&(ie==="qwen"||ie==="flux2"))N.push("Z-Image Turbo is the lightest image model and suits "+vram+" GB VRAM better than "+(ie==="qwen"?"Qwen Image 2.1":"Flux 2")+".");
+ if(vram>=24&&ie==="zimage"&&(goal==="quality"||goal==="long"))N.push("Qwen Image 2.1 or Flux 2 follow reference images better than Z-Image Turbo, which only uses text. Better for long films.");
+ if(ie==="h3"&&(goal==="long"||goal==="quality"))N.push("The MiniMax H3 still cannot use reference images. Choose Qwen Image 2.1 or Flux 2 as the image model for re-anchoring and refresh.");
+ if(ve==="wan21"||ve==="wan22")N.push("Wan models are trained at about 480p. Sizes above that need the 720p model files in Video engine.");
+ if(ram<64)N.push("Under 64 GB RAM: render 10-15 scenes per workflow (Render scenes from / to) and keep Skip in-graph join on.");
+ N.push("Estimated memory for an in-graph join of "+n+" scene(s), "+total+" s at "+w+"x"+h+": about "+Math.round(peak)+" GB"+(nj?" (too much or a long film, so scenes are saved separately and joined with ffmpeg).":"."));
+ if(goal==="long")N.push("For long films also render in chunks, keep reference images and the consistency bible on, and compare the last scene with the first on a short test run.");
+ return {E:E,N:N};}
+function sgCur(id){const e=$(id);return e.type==="checkbox"?e.checked:e.value;}
+function renderSuggest(){const el=$("sgOut");if(!el)return;const p=sgPlan(),ch=p.E.filter(e=>String(sgCur(e[0]))!==String(e[2]));
+ el.textContent=(ch.length?"Suggested changes ("+ch.length+"):\n"+ch.map(e=>"  "+e[1]+": "+(typeof e[2]==="boolean"?(sgCur(e[0])?"on":"off")+" -> "+(e[2]?"on":"off"):sgCur(e[0])+" -> "+e[2])).join("\n"):"Your current settings already match the suggestion.")+"\n\nNotes:\n"+p.N.map(x=>"  - "+x).join("\n");
+ try{localStorage.setItem("sgPrefs",JSON.stringify({g:$("sgG").value,r:$("sgR").value,v:$("sgV").value}));}catch(err){}}
+function applySuggest(){const p=sgPlan();p.E.forEach(e=>{const el=$(e[0]);if(!el)return;if(el.type==="checkbox")el.checked=!!e[2];else el.value=e[2];if(e[0]==="turbo")autofill();});refresh();}
+try{const q=JSON.parse(localStorage.getItem("sgPrefs")||"null");if(q){["g","r","v"].forEach(k=>{const el=$({g:"sgG",r:"sgR",v:"sgV"}[k]);if(el&&[...el.options].some(o=>o.value===q[k]||o.text===q[k]))el.value=q[k];});}}catch(err){}
+["sgG","sgR","sgV"].forEach(id=>$(id).addEventListener("change",refresh));
+$("sgDet").onclick=detectGpu;$("sgApply").onclick=applySuggest;
 const EDEF={mm:{w:512,h:288,fps:24,smp:"res_multistep"},wan21:{w:832,h:480,fps:16,smp:"uni_pc",wm1:"wan2.1_i2v_480p_14B_fp16.safetensors",wte:"umt5_xxl_fp8_e4m3fn_scaled.safetensors",wvae:"wan_2.1_vae.safetensors",wcv:"clip_vision_h.safetensors",wl1:"lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"},wan22:{w:832,h:480,fps:16,smp:"euler",wm1:"wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",wm2:"wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",wte:"umt5_xxl_fp8_e4m3fn_scaled.safetensors",wvae:"wan_2.1_vae.safetensors",wl1:"wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",wl2:"wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"},ltx23:{w:768,h:512,fps:24,smp:"euler",lun:"ltx-2.3-22b-dev.safetensors",lt1:"gemma_3_12B_it.safetensors",lt2:"ltx-2.3_text_projection_bf16.safetensors",lvae:"LTX23_video_vae_bf16.safetensors",lav:"ltx-2.3-22b-dev.safetensors",llo:"ltx-2.3-22b-distilled-lora-384.safetensors"},ltx25:{w:768,h:512,fps:24,smp:"euler",lun:"ltx-2.5-22b-dev.safetensors",lt1:"gemma_3_12B_it.safetensors",lt2:"ltx-2.5_text_projection_bf16.safetensors",lvae:"LTX25_video_vae_bf16.safetensors",lav:"ltx-2.5-22b-dev.safetensors",llo:"ltx-2.5-22b-distilled-lora-384.safetensors"}};
 $("ve").addEventListener("change",()=>{const d=EDEF[$("ve").value];if(d)Object.keys(d).forEach(k=>{$(k).value=d[k];});resFromWH();autofill();refresh();});
 const IDEF={qwen:["qwen_image_2.1_int8_convrot.safetensors","qwen3vl_8b_int8_convrot.safetensors","qwen_image_2.1_vae_bf16.safetensors",40,1],flux2:["flux2_dev_fp8mixed.safetensors","mistral_3_small_flux2_bf16.safetensors","flux2-vae.safetensors",20,4],zimage:["z_image_turbo_bf16.safetensors","qwen_3_4b.safetensors","ae.safetensors",8,1]};
 $("ie").addEventListener("change",()=>{const d=IDEF[$("ie").value];if(d)["qun","qte","qvae","rst","rcfg"].forEach((id,k)=>{$(id).value=d[k];});refresh();});
-const TS=[["video_engine","ve"],["sharpen_strength","rsa"],["refresh_denoise","rfd"],["continuation_prompt","ctp"],["resolution_preset","res"],["reference_image_fit","rfit"],["reference_image_size","ris"],["upscale_model","upm"],["upscale_native_scale","ups"],["upscale_final_scale","upf"],["width","w"],["height","h"],["fps","fps"],["default_scene_duration_s","dd"],["output_name","fin"],["negative_prompt","neg"],["first_frame_mode","mode"],["image_engine","ie"],["image_loras","ilr"],["first_frame_width","kw"],["first_frame_height","kh"],["max_references_per_first_frame","jmax"],["reanchor_every_n_scenes","jn"],["music_checkpoint","mck"],["music_seconds_per_track","mseg"],["music_volume","mvol"]];
-const TO=[["audio","aud"],["reference_mode","rm"],["reference_last_frame_continuity","gc"],["link_references_by_name_only","rauto"],["keyframes","kf"],["consistency_bible","bib"],["external_tts","ext"],["skip_in_graph_join","nj"],["generate_reference_images","rg"],["generate_first_frames","jf"],["next_first_frame_as_last_frame","jl"],["music","mu"],["force_scene_order","lk"],["subgraph_packing","sg"],["plan_export","exp"],["upscale","up"],["sharpen_chained_frames","rfs"],["upscale_round_trip_chained_frames","rfu"],["image_model_refresh_chained_frames","rfi"]];
+const TS=[["video_engine","ve"],["sharpen_strength","rsa"],["refresh_denoise","rfd"],["continuation_prompt","ctp"],["resolution_preset","res"],["reference_image_fit","rfit"],["reference_image_size","ris"],["upscale_model","upm"],["upscale_native_scale","ups"],["upscale_final_scale","upf"],["width","w"],["height","h"],["fps","fps"],["default_scene_duration_s","dd"],["output_name","fin"],["negative_prompt","neg"],["first_frame_mode","mode"],["image_engine","ie"],["image_loras","ilr"],["first_frame_width","kw"],["first_frame_height","kh"],["max_references_per_first_frame","jmax"],["reanchor_every_n_scenes","jn"],["reference_linking","rlink"],["character_angle_prompts","rav"],["location_angle_prompts","rav2"],["object_angle_prompts","rav3"],["music_checkpoint","mck"],["music_seconds_per_track","mseg"],["music_volume","mvol"]];
+const TO=[["audio","aud"],["reference_mode","rm"],["reference_last_frame_continuity","gc"],["keyframes","kf"],["consistency_bible","bib"],["external_tts","ext"],["skip_in_graph_join","nj"],["generate_reference_images","rg"],["multi_angle_references","rang"],["generate_first_frames","jf"],["next_first_frame_as_last_frame","jl"],["music","mu"],["force_scene_order","lk"],["subgraph_packing","sg"],["plan_export","exp"],["upscale","up"],["sharpen_chained_frames","rfs"],["upscale_round_trip_chained_frames","rfu"],["image_model_refresh_chained_frames","rfi"]];
 function tplAdv(){const o={};document.querySelectorAll("input[id],select[id],textarea[id]").forEach(e=>{if(e.id==="out"||e.id==="tplFile")return;o[e.id]=e.type==="checkbox"?e.checked:e.value;});return o;}
 function tplGet(){
  const sp=t=>t.split("\n").map(x=>x.trim()).filter(Boolean),ch=sp($("bch").value);
- const rf=refs().map(r=>({name:r.n,filename:r.f,description:r.d}));
- const sc=scenes().map(x=>({prompt:x.p,duration_s:x.d>0?x.d:(+$("dd").value||15),first_frame:x.f,last_frame:x.l,hard_cut:x.k,dialogue:sp(x.dl),sound:x.sn,references:x.rr,seed:x.s===""?null:Number(x.s)}));
+ const rf=refs().map(r=>({name:r.n,filename:r.f,description:r.d,type:r.t,angle_files:r.a,extra_angles:r.x}));
+ const sc=scenes().map(x=>({prompt:x.p,duration_s:x.d>0?x.d:(+$("dd").value||15),first_frame:x.f,last_frame:x.l,hard_cut:x.k,dialogue:sp(x.dl),sound:x.sn,camera_view:x.v,references:x.rr,seed:x.s===""?null:Number(x.s)}));
  return {_instructions:[
  "HOW TO USE: fill in this JSON template and return ONLY the completed JSON (no commentary, no markdown). Keep every key and the exact structure; do not rename keys. Keys starting with _ are ignored.",
  "story_brief is the premise or long prompt written by the user. Expand it into a full scene list. target_runtime_minutes: make the sum of all scene duration_s match it.",
@@ -603,7 +717,7 @@ function tplGet(){
  "dialogue: array of strings formatted 'Speaker: line'. sound: short ambience / foley / music note for the scene. Leave empty if none.",
  "hard_cut: true when the scene starts a new shot or location (matters when options.keyframes is true). first_frame and last_frame: leave empty unless the user supplied image filenames.",
  "reference_images: one entry per character, location or style sheet. name = short label; description = look, outfit and voice (also the image-generation prompt when options.generate_reference_images is true); filename = image name in ComfyUI input (empty if generating). All of them are linked to every scene unless scenes[].references limits them.",
- "scenes[].references: leave empty. It is only used if the page option 'Use the per-scene reference lists' is on. Optional list such as '1,3' or names to limit which reference images a scene uses; empty means all references.",
+ "reference_images[].type: character, location or object. It decides which angle prompts are used when options.multi_angle_references is true (front, sides and back for characters; other camera positions for locations). angle_files: leave empty unless the user supplied their own angle images, written as 'front=a.png, back=b.png'. extra_angles: true to create extra angles for this reference, false for a reference that only needs its original image (props, style sheets, background plates).","scenes[].camera_view: front, left, right, back, three-quarter or auto. Set it to match the shot: back when we see a character from behind or the camera looks the opposite way in a location, left or right for profile shots, front for facing the camera. The generator links the reference angle that matches it. Use auto only if unsure.","scenes[].references: leave empty. It is only used when settings.reference_linking is 'list' (each scene's own list of numbers or names such as '1,3'); 'all' links every reference to every scene and 'name' links only references named in the scene.",
  "consistency: style_line = one sentence of visual style shared by every scene; character_bible = array of 'Name: look; voice' lines; global_sound = one line of overall sound design.",
  "music_prompt: one description of the music for the whole film (genre, mood, instruments, tempo); only used when options.music is true.","settings.video_engine is one of mm (MiniMax H3), wan21, wan22, ltx23, ltx25: keep it unless the user asks for a change. settings, options and advanced: keep the current values unless the user asks for a change. advanced lists every page control by its id."],
  story_brief:"",target_runtime_minutes:null,
@@ -611,7 +725,7 @@ function tplGet(){
  options:Object.fromEntries(TO.map(t=>[t[0],$(t[1]).checked])),
  music_prompt:$("mp").value.trim(),
  consistency:{style_line:$("bst").value.trim(),character_bible:ch.length?ch:["Name: look; voice"],global_sound:$("bsn").value.trim()},
- reference_images:rf.some(r=>r.name||r.filename||r.description)?rf:[{name:"",filename:"",description:""}],
+ reference_images:rf.some(r=>r.name||r.filename||r.description)?rf:[{name:"",filename:"",description:"",type:"character",angle_files:"",extra_angles:true}],
  scenes:sc,
  advanced:tplAdv()};}
 function tplLoad(txt){
@@ -626,13 +740,14 @@ function tplLoad(txt){
  if(d.advanced&&typeof d.advanced==="object")Object.keys(d.advanced).forEach(id=>{const e=document.getElementById(id),v=d.advanced[id];if(!e||id==="out"||id==="tplFile"||!e.matches("input,select,textarea"))return;if(e.type==="checkbox"){if(typeof v==="boolean")e.checked=v;}else if(e.tagName==="SELECT"){if([...e.options].some(o=>o.value===String(v)))e.value=String(v);}else if(typeof v==="string"||typeof v==="number")e.value=v;});
  TS.forEach(t=>{let v=S[t[0]];if(v===undefined||v===null)return;if(Array.isArray(v))v=v.join("\n");const e=$(t[1]);if(e.tagName==="SELECT"){if([...e.options].some(o=>o.value===String(v)))e.value=String(v);}else set(t[1],v);});
  TO.concat([["first_frames_qwen","jf"]]).forEach(t=>ck(t[1],O[t[0]]));
+ if(S.reference_linking===undefined&&O.link_references_by_name_only===true)$("rlink").value="name";
  if(C.style_line!==undefined)$("bst").value=lines(C.style_line);
  if(C.character_bible!==undefined)$("bch").value=lines(C.character_bible);
  if(typeof d.music_prompt==="string")$("mp").value=d.music_prompt;
  if(C.global_sound!==undefined)$("bsn").value=lines(C.global_sound);
  let nr=0,ns=0;
  if(Array.isArray(d.reference_images)){$("refs").innerHTML="";
-  d.reference_images.forEach(r=>{if(!r||!(r.name||r.filename||r.description))return;addRef(String(r.name||""),String(r.filename||""),String(r.description||""));nr++;});
+  d.reference_images.forEach(r=>{if(!r||!(r.name||r.filename||r.description))return;addRef(String(r.name||""),String(r.filename||""),String(r.description||""),String(r.type||"").toLowerCase(),String(r.angle_files||""),r.extra_angles!==false);nr++;});
   if(!nr)addRef();}
  if(Array.isArray(d.scenes)&&d.scenes.length){$("scenes").innerHTML="";cnt=0;
   d.scenes.forEach((x,i)=>{x=x||{};const dur=Number(x.duration_s)>0?Number(x.duration_s):null,sd=x.seed===null||x.seed===undefined||x.seed===""||!isFinite(Number(x.seed))?null:Number(x.seed);
@@ -641,6 +756,7 @@ function tplLoad(txt){
    const c=[...document.querySelectorAll(".sc")].pop();
    c.querySelector(".sl").value=String(x.last_frame||"");c.querySelector(".sk").checked=!!x.hard_cut;
    c.querySelector(".sdl").value=lines(x.dialogue);c.querySelector(".ssn").value=String(x.sound||"");
+   {const cv=String(x.camera_view||"auto").toLowerCase(),sv=c.querySelector(".sv");sv.value=[...sv.options].some(o=>o.value===cv)?cv:"auto";}
    c.querySelector(".srr").value=Array.isArray(x.references)?x.references.join(","):String(x.references||"");ns++;});}
  else warn.push("no scenes found; existing scenes were kept");
  if(S.resolution_preset===undefined&&(d.advanced&&d.advanced.res)===undefined)resFromWH();
@@ -668,4 +784,6 @@ document.querySelector("main").addEventListener("input",refresh);
 $("dd").addEventListener("change",()=>{});
 addScene("",15);addRef();autofill();refresh();
 })();
-</script></body></html>
+</script>
+</body>
+</html>
