@@ -76,7 +76,7 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px ui-monospace,C
 <div class="g"><div><label>Which references each scene uses</label><select id="rlink"><option value="all">All references in every scene</option><option value="name">Only references named in the scene prompt or dialogue</option><option value="list">Each scene's own list (set inside the scene)</option></select></div><div data-eng="mm"><label>Reference image fit (keeps the aspect ratio, never stretches)</label><select id="rfit"><option value="pad">Pad to video aspect (no stretching)</option><option value="crop">Center-crop to video aspect (no stretching)</option><option value="orig">Keep original size (uses ref_image_size below)</option></select></div><div data-eng="mm"><label>Reference size mode (ref_image_size)</label><select id="ris"><option>match</option><option>max</option></select></div></div>
 <div class="cb"><input type="checkbox" id="rg"><label for="rg">Generate reference images in the workflow (uses the image engine above)</label></div>
 <div class="g"><div><label>Generated reference width</label><input id="rw" type="number" value="1024"></div><div><label>Generated reference height</label><input id="rh" type="number" value="1024"></div></div>
-<div class="cb"><input type="checkbox" id="rang"><label for="rang">Create several angles of every reference (characters: front, sides, back; locations: other camera positions) and link the angle that matches each scene</label></div>
+<div class="cb"><input type="checkbox" id="rang"><label for="rang">Create several angles of every reference from its original image (characters: front, sides, back; locations: other camera positions) and link the angle that matches each scene</label></div>
 <div id="rangBox"><div id="rangMsg" style="color:#ff9d5c;font-size:12px;margin:2px 0"></div>
 <div id="rangNote" style="color:#8a93a0;font-size:12px;margin:2px 0 6px">Angles are generated from each reference's original image with Qwen Image 2.1 or Flux 2, so every angle shows the same person or place. Z-Image Turbo and MiniMax H3 cannot do this: give those references your own angle images on the reference card. Untick "Create extra angles" on any reference that does not need them. Set each scene's camera view in the scene list, or leave it on Auto.</div>
 <div class="g"><div><label>Character angles (one per line: front, left, right, back or three-quarter, then a colon and the angle prompt; delete a line to skip that angle)</label><textarea id="rav" rows="5">front: full body, front view, facing the camera, neutral standing pose
@@ -247,10 +247,13 @@ function build(){
  const RA=refs(),RG=$("rg").checked,RL=RA.filter(r=>r.d||r.n);
  if(RG&&!RL.length)W.push("Reference image generation is on but no reference has a name or description.");
  let IG=null;const IE=(!MMV&&$("ie").value==="h3")?"qwen":$("ie").value,IEN={qwen:"Qwen Image 2.1",flux2:"Flux 2",zimage:"Z-Image Turbo",h3:"MiniMax H3"};
+ {const qt=$("qte").value.trim(),used=RG||$("jf").checked||$("rang").checked||$("rfi").checked;
+  if(used&&badEnc(IE,qt)){const need={qwen:"the 8B Qwen3-VL encoder (qwen3vl_8b_int8_convrot.safetensors, 4096-dim)",zimage:"the Qwen 3 4B encoder (qwen_3_4b.safetensors)",flux2:"the Mistral Small 3 encoder (mistral_3_small_flux2_bf16.safetensors)"}[IE];
+   E.push("Image text encoder file '"+qt+"' does not belong to "+IEN[IE]+", which needs "+need+". A mismatch fails in the image sampler with a shape error such as: expected input with shape [*4096], but got input of size [1, N, 5120] (the 32B MiniMax encoder outputs 5120-dim embeddings). Fix 'Image text encoder file' under Video and image engines; the MiniMax encoder has its own field.");}}
  const lr=$("ilr").value.split("\n").map(x=>x.trim()).filter(Boolean).map(l=>{const q=l.split("|"),v=parseFloat(q[1]);return {n:q[0].trim(),sv:isNaN(v)?1:v};});
  const setupIG=()=>{if(IG||IE==="h3")return;
   let mo=[N("UNETLoader","Image Model",-2200,-2600,[$("qun").value.trim(),"default"],[],[["MODEL","MODEL"]]),0];
-  let cl=[N("CLIPLoader","Image Text Encoder",-2200,-2400,[$("qte").value.trim(),IE==="qwen"?"qwen_image":(IE==="flux2"?"flux2":"lumina2"),"default"],[],[["CLIP","CLIP"]]),0];
+  let cl=[N("CLIPLoader","Image Text Encoder ("+(IE==="qwen"?"Qwen 8B, 4096-dim":IE==="flux2"?"Mistral, 5120-dim":"Qwen 4B, 2560-dim")+")",-2200,-2400,[$("qte").value.trim(),IE==="qwen"?"qwen_image":(IE==="flux2"?"flux2":"lumina2"),"default"],[],[["CLIP","CLIP"]]),0];
   const vl=N("VAELoader","Image VAE",-2200,-2200,[$("qvae").value.trim()],[],[["VAE","VAE"]]);
   lr.forEach((l,k)=>{const n=N("LoraLoader","Image LoRA "+(k+1),-2550,-2600+k*170,[l.n,l.sv,l.sv],[M,["clip","CLIP"]],[["MODEL","MODEL"],["CLIP","CLIP"]]);L(mo[0],mo[1],n,0);L(cl[0],cl[1],n,1);mo=[n,0];cl=[n,1];});
   if(IE==="qwen"){const q=N("QwenImage21Cache","Image Model Cache",-1900,-2600,["auto","default"],[M],[["MODEL","MODEL"]]);L(mo[0],mo[1],q,0);mo=[q,0];}
@@ -612,8 +615,10 @@ function dl(n,t,m){const u=URL.createObjectURL(new Blob([t],{type:m})),a=documen
 function applyRes(){const r=$("res").value,mm=$("ve").value==="mm";if(mm&&r!=="custom"){const q=r.split("x");$("w").value=q[0];$("h").value=q[1];}
  $("wW").classList.toggle("hid",mm&&r!=="custom");$("hW").classList.toggle("hid",mm&&r!=="custom");}
 function resFromWH(){const v=$("w").value+"x"+$("h").value;$("res").value=[...$("res").options].some(o=>o.value===v)?v:"custom";}
+function badEnc(ie,q){q=String(q).toLowerCase();return ie==="qwen"?/32b|minimax|mistral|gemma|umt5|_4b/.test(q):ie==="zimage"?/32b|minimax|8b|mistral|gemma|umt5/.test(q):ie==="flux2"?/qwen3vl|minimax|umt5/.test(q):false;}
+function fixImg(){const d=IDEF[$("ie").value];if(d&&badEnc($("ie").value,$("qte").value))["qun","qte","qvae","rst","rcfg"].forEach((id,k)=>{$(id).value=d[k];});}
 function applyEngine(){const ve=$("ve").value,im=$("ie").value;document.querySelectorAll("[data-img]").forEach(e=>e.classList.toggle("hid",!e.dataset.img.split(" ").includes(im)));document.querySelectorAll("[data-eng]").forEach(e=>e.classList.toggle("hid",!e.dataset.eng.split(" ").includes(ve)));
- [...$("ie").options].forEach(o=>{if(o.value==="h3")o.disabled=ve!=="mm";});if(ve!=="mm"&&$("ie").value==="h3")$("ie").value="qwen";}
+ [...$("ie").options].forEach(o=>{if(o.value==="h3")o.disabled=ve!=="mm";});if(ve!=="mm"&&$("ie").value==="h3"){$("ie").value="qwen";fixImg();}}
 function sync(){applyEngine();applyRes();renderSuggest();const ra=$("rang").checked;$("rangBox").classList.toggle("hid",!ra);document.querySelectorAll(".rxw,.rvw").forEach(e=>e.classList.toggle("hid",!ra));document.querySelectorAll(".rlw").forEach(e=>e.classList.toggle("hid",$("rlink").value!=="list"));$("refHint").textContent=(!$("rm").checked&&$("ve").value==="mm"&&refs().some(r=>r.f))?"Not linked to MiniMax yet: tick 'Reference-to-video mode' in the options below so these images are linked as <Picture N>.":"";document.body.classList.toggle("kon",$("kf").checked||$("bib").checked||$("ext").checked||$("rm").checked);$("bPlan").style.display=$("bFF").style.display=$("exp").checked?"":"none";}
 function plan(r){const sp=t=>t.split("\n").map(x=>x.trim()).filter(Boolean);
  return JSON.stringify({output:r.fin,fps:r.fps,width:r.w,height:r.h,style:$("bst").value.trim(),characters:sp($("bch").value),reference_images:refs().map(r=>({name:r.n,file:r.f,description:r.d,type:r.t,angle_files:r.a,extra_angles:r.x})),global_sound:$("bsn").value.trim(),external_tts:r.ext,
@@ -741,6 +746,7 @@ function tplLoad(txt){
  TS.forEach(t=>{let v=S[t[0]];if(v===undefined||v===null)return;if(Array.isArray(v))v=v.join("\n");const e=$(t[1]);if(e.tagName==="SELECT"){if([...e.options].some(o=>o.value===String(v)))e.value=String(v);}else set(t[1],v);});
  TO.concat([["first_frames_qwen","jf"]]).forEach(t=>ck(t[1],O[t[0]]));
  if(S.reference_linking===undefined&&O.link_references_by_name_only===true)$("rlink").value="name";
+ fixImg();
  if(C.style_line!==undefined)$("bst").value=lines(C.style_line);
  if(C.character_bible!==undefined)$("bch").value=lines(C.character_bible);
  if(typeof d.music_prompt==="string")$("mp").value=d.music_prompt;
@@ -784,6 +790,4 @@ document.querySelector("main").addEventListener("input",refresh);
 $("dd").addEventListener("change",()=>{});
 addScene("",15);addRef();autofill();refresh();
 })();
-</script>
-</body>
-</html>
+</script></body></html>
