@@ -1,3 +1,7 @@
+I am developing my own script to create very long movies. I have explored Comfy and Pinokio. Both great platforms but they have limitations. Comfy requires extra nodes to achieve difficult task and this consumes resources especially Ram.
+
+These scripts will do well in Comfy but I will go external and also keep this alive in case comfy improves in their backend
+
 ComfyUI Local Workflow Generator
 Build production-ready, multi-scene ComfyUI workflows for long AI video generation. A standalone, zero-install local HTML generator optimized for MiniMax H3, Wan 2.1/2.2, LTX Video, Qwen Image 2.1, and Flux 2.
 
