@@ -42,6 +42,9 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px ui-monospace,C
 <div><label>Image text encoder file</label><input id="qte" value="qwen3vl_8b_int8_convrot.safetensors"></div>
 <div><label>Image VAE file</label><input id="qvae" value="qwen_image_2.1_vae_bf16.safetensors"></div></div>
 <div data-img="qwen flux2 zimage"><label>Image LoRAs (one per line: filename | strength)</label><textarea id="ilr" style="min-height:40px" placeholder="my_style_lora.safetensors | 0.8"></textarea></div>
+<div class="g" data-img="qwen flux2 zimage"><div><label>Image sampler</label><select id="isamp"></select></div><div><label>Image scheduler</label><select id="isch"></select></div></div><div id="isHint" data-img="qwen flux2 zimage" style="color:#8a93a0;font-size:12px;margin:-2px 0 6px"></div>
+<div data-img="qwen flux2 zimage"><label>Image style (added to every generated reference image, angle and first frame)</label><input id="jsty" value="photorealistic photograph, natural lighting, realistic skin texture, sharp focus, fine detail"></div>
+<div class="cb" data-img="qwen"><input type="checkbox" id="qcache" checked><label for="qcache">Use the Qwen Image 2.1 cache node (both ComfyUI Qwen Image 2.1 templates, text-to-image and edit, always include it)</label></div>
 <div class="g" data-img="qwen flux2 zimage"><div><label>Image steps</label><input id="rst" type="number" value="40"></div><div><label>Image CFG / guidance</label><input id="rcfg" type="number" step="0.1" value="1"></div></div>
 <div class="g" data-eng="wan21 wan22">
 <div><label>Diffusion model file</label><input id="wm1" value="wan2.1_i2v_480p_14B_fp16.safetensors"></div>
@@ -78,7 +81,8 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px ui-monospace,C
 <div class="g"><div><label>Generated reference width</label><input id="rw" type="number" value="1024"></div><div><label>Generated reference height</label><input id="rh" type="number" value="1024"></div></div>
 <div class="cb"><input type="checkbox" id="rang"><label for="rang">Create several angles of every reference from its original image (characters: front, sides, back; locations: other camera positions) and link the angle that matches each scene</label></div>
 <div id="rangBox"><div id="rangMsg" style="color:#ff9d5c;font-size:12px;margin:2px 0"></div>
-<div id="rangNote" style="color:#8a93a0;font-size:12px;margin:2px 0 6px">Angles are generated from each reference's original image with Qwen Image 2.1 or Flux 2, so every angle shows the same person or place. Z-Image Turbo and MiniMax H3 cannot do this: give those references your own angle images on the reference card. Untick "Create extra angles" on any reference that does not need them. Set each scene's camera view in the scene list, or leave it on Auto.</div>
+<div><label>Extra angle images</label><select id="aeng"><option value="manual">Manual: I add the angle images myself (nothing generated, Load Image nodes sit next to the originals)</option><option value="h3">Generate with MiniMax H3 reference-to-video (MiniMax video engine only)</option><option value="img">Generate with the image engine (Qwen Image 2.1 / Flux 2 edit)</option></select><div style="color:#8a93a0;font-size:12px;margin-top:3px">Only the original reference images are ever used as input. Tick or untick 'Create extra angles' on each reference card to choose which ones get angle images.</div></div>
+<div id="rangNote" style="color:#8a93a0;font-size:12px;margin:2px 0 6px">Manual mode adds a Load Image node for every angle next to the original references, so you can create the angle pictures yourself (or with any tool) and add them in ComfyUI. The generate options use only the original reference as input. Angle prompts below are used when generating.</div>
 <div class="g"><div><label>Character angles (one per line: front, left, right, back or three-quarter, then a colon and the angle prompt; delete a line to skip that angle)</label><textarea id="rav" rows="5">front: full body, front view, facing the camera, neutral standing pose
 left: full body, left side profile view, facing left
 right: full body, right side profile view, facing right
@@ -103,7 +107,7 @@ three-quarter: three-quarter view from above</textarea></div></div></div>
 <div class="cb"><input type="checkbox" id="kf"><label for="kf">First + last keyframes per scene (N+1 shared keyframes from your image model)</label></div>
 <div class="g"><div><label>Keyframe filename pattern ({n} = 001, 002...)</label><input id="kfp" value="keyframe_{n}.png"></div></div>
 <div class="cb"><input type="checkbox" id="jf"><label for="jf">Generate scene first frames with the image engine above; scenes between anchors chain from the previous scene's last frame</label></div>
-<div class="g"><div><label>First-frame width</label><input id="kw" type="number" value="1280"></div><div><label>First-frame height</label><input id="kh" type="number" value="720"></div><div><label>Max reference inputs per first frame (0 = engine limit; extras are stitched into sheets, never dropped)</label><input id="jmax" type="number" min="0" value="0"></div><div><label>Re-anchor every N scenes (1 = every scene)</label><input id="jn" type="number" min="1" value="4"></div><div><label>Style suffix for generated frames</label><input id="jsty" value="photorealistic cinematic film still, natural lighting, realistic skin texture"></div></div>
+<div class="g"><div><label>First-frame width</label><input id="kw" type="number" value="1280"></div><div><label>First-frame height</label><input id="kh" type="number" value="720"></div><div><label>Max reference inputs per first frame (0 = engine limit; extras are stitched into sheets, never dropped)</label><input id="jmax" type="number" min="0" value="0"></div><div><label>Re-anchor every N scenes (1 = every scene)</label><input id="jn" type="number" min="1" value="4"></div></div>
 <div class="cb" data-eng="mm"><input type="checkbox" id="jl"><label for="jl">Use the next scene's first frame as this scene's last frame (continuous shots; ignored on hard cuts)</label></div>
 </section>
 <section><h2>Consistency</h2>
@@ -250,15 +254,18 @@ function build(){
  {const qt=$("qte").value.trim(),used=RG||$("jf").checked||$("rang").checked||$("rfi").checked;
   if(used&&badEnc(IE,qt)){const need={qwen:"the 8B Qwen3-VL encoder (qwen3vl_8b_int8_convrot.safetensors, 4096-dim)",zimage:"the Qwen 3 4B encoder (qwen_3_4b.safetensors)",flux2:"the Mistral Small 3 encoder (mistral_3_small_flux2_bf16.safetensors)"}[IE];
    E.push("Image text encoder file '"+qt+"' does not belong to "+IEN[IE]+", which needs "+need+". A mismatch fails in the image sampler with a shape error such as: expected input with shape [*4096], but got input of size [1, N, 5120] (the 32B MiniMax encoder outputs 5120-dim embeddings). Fix 'Image text encoder file' under Video and image engines; the MiniMax encoder has its own field.");}}
+ const IST=$("jsty").value.trim(),IPHOTO=IST&&!/anim|cartoon|illustrat|paint|watercolo|3d|render|pixel|sketch|comic|manga|vector/i.test(IST),ILEAD=IPHOTO?"The image is a photorealistic photograph of ":"";
+ if(RG&&IE==="qwen"&&RL.some(r=>(r.d||"").split(/\s+/).filter(Boolean).length<20))W.push("Some reference descriptions are very short. Qwen Image 2.1 is trained on long, specific descriptions (ComfyUI's own example is about 300 words) and drifts to a painted look on short ones. Describe age, face, hair, build, clothing, setting and lighting in a full paragraph.");
+ const ISA=$("isamp").value||"euler",ISC=$("isch").value==="flux2"?"simple":($("isch").value||"simple");
  const lr=$("ilr").value.split("\n").map(x=>x.trim()).filter(Boolean).map(l=>{const q=l.split("|"),v=parseFloat(q[1]);return {n:q[0].trim(),sv:isNaN(v)?1:v};});
  const setupIG=()=>{if(IG||IE==="h3")return;
   let mo=[N("UNETLoader","Image Model",-2200,-2600,[$("qun").value.trim(),"default"],[],[["MODEL","MODEL"]]),0];
   let cl=[N("CLIPLoader","Image Text Encoder ("+(IE==="qwen"?"Qwen 8B, 4096-dim":IE==="flux2"?"Mistral, 5120-dim":"Qwen 4B, 2560-dim")+")",-2200,-2400,[$("qte").value.trim(),IE==="qwen"?"qwen_image":(IE==="flux2"?"flux2":"lumina2"),"default"],[],[["CLIP","CLIP"]]),0];
   const vl=N("VAELoader","Image VAE",-2200,-2200,[$("qvae").value.trim()],[],[["VAE","VAE"]]);
   lr.forEach((l,k)=>{const n=N("LoraLoader","Image LoRA "+(k+1),-2550,-2600+k*170,[l.n,l.sv,l.sv],[M,["clip","CLIP"]],[["MODEL","MODEL"],["CLIP","CLIP"]]);L(mo[0],mo[1],n,0);L(cl[0],cl[1],n,1);mo=[n,0];cl=[n,1];});
-  if(IE==="qwen"){const q=N("QwenImage21Cache","Image Model Cache",-1900,-2600,["auto","default"],[M],[["MODEL","MODEL"]]);L(mo[0],mo[1],q,0);mo=[q,0];}
+  if(IE==="qwen"&&$("qcache").checked){const q=N("QwenImage21Cache","Image Model Cache",-1900,-2600,["auto","default"],[M],[["MODEL","MODEL"]]);L(mo[0],mo[1],q,0);mo=[q,0];}
   if(IE==="zimage"){const q=N("ModelSamplingAuraFlow","Image Model Sampling",-1900,-2600,[3],[M],[["MODEL","MODEL"]]);L(mo[0],mo[1],q,0);mo=[q,0];}
-  IG={m:mo,c:cl,v:vl,ks:IE==="flux2"?N("KSamplerSelect","Image Sampler Select",-1900,-2450,["euler"],[],[["SAMPLER","SAMPLER"]]):null};};
+  IG={m:mo,c:cl,v:vl,ks:IE==="flux2"?N("KSamplerSelect","Image Sampler Select",-1900,-2450,[ISA],[],[["SAMPLER","SAMPLER"]]):null};};
  const imgGen=(label,x,y0,prompt,gw,gh,seed,rn,init,den)=>{
   if(init&&IE!=="zimage"&&IE!=="h3")rn=[init].concat(rn);
   const neg=$("neg").value.trim(),st=+$("rst").value||(IE==="zimage"?8:IE==="flux2"?20:40),cg=+$("rcfg").value||1,SI=[["noise","NOISE"],["guider","GUIDER"],["sampler","SAMPLER"],["sigmas","SIGMAS"],["latent_image","LATENT"]],SO=[["output","LATENT"],["denoised_output","LATENT"]],KI=[M,["positive","CONDITIONING"],["negative","CONDITIONING"],["latent_image","LATENT"]];let dc;
@@ -275,14 +282,18 @@ function build(){
   if(IE==="qwen"){const ins=[["clip","CLIP"]];rn.forEach((o,j)=>ins.push(["images.image_"+(j+1),"IMAGE",{shape:7}]));ins.push(["images.image_"+(rn.length+1),"IMAGE",{shape:7}],["vae","VAE",{shape:7}],["prompt","STRING",{widget:{name:"prompt"}}],["negative_prompt","STRING",{widget:{name:"negative_prompt"}}]);
    const te=N("TextEncodeQwenImage21",label+" Prompt",x,y0,[prompt,neg,1024],ins,[["positive","CONDITIONING"],["negative","CONDITIONING"],["latent","LATENT"]]);
    L(IG.c[0],IG.c[1],te,0);rn.forEach((o,j)=>L(o,0,te,1+j));if(rn.length)L(IG.v,0,te,ins.findIndex(a=>a[0]==="vae"));
-   const el=mkLat("EmptyLatentImage",y0+300);
-   const kk=N("KSampler",label+" Sampler",x,y0+450,[seed,"fixed",st,cg,"euler","simple",init?den:1],KI,[["LATENT","LATENT"]]);L(IG.m[0],IG.m[1],kk,0);L(te,0,kk,1);L(te,1,kk,2);L(el,0,kk,3);
-   dc=N("VAEDecode",label+" Decode",x,y0+700,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(kk,0,dc,0);L(IG.v,0,dc,1);}
+   let el,ky=y0+450;
+   if(init){el=mkLat("EmptyLatentImage",y0+300);}
+   else{const em=N("EmptyLatentImage",label+" Empty Latent",x,y0+300,[gw,gh,1],[],[["LATENT","LATENT"]]);
+    const sw=N("ComfySwitchNode",label+" Latent Switch",x,y0+450,[!rn.length],[["on_false","LATENT",{shape:7}],["on_true","LATENT",{shape:7}],["switch","BOOLEAN",{widget:{name:"switch"}}]],[["output","LATENT"]]);
+    L(te,2,sw,0);L(em,0,sw,1);el=sw;ky=y0+600;}
+   const kk=N("KSampler",label+" Sampler",x,ky,[seed,"fixed",st,cg,ISA,ISC,init?den:1],KI,[["LATENT","LATENT"]]);L(IG.m[0],IG.m[1],kk,0);L(te,0,kk,1);L(te,1,kk,2);L(el,0,kk,3);
+   dc=N("VAEDecode",label+" Decode",x,ky+250,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(kk,0,dc,0);L(IG.v,0,dc,1);}
   else{const te=N("CLIPTextEncode",label+" Prompt",x,y0,[prompt],[["clip","CLIP"]],[["CONDITIONING","CONDITIONING"]]);L(IG.c[0],IG.c[1],te,0);
    if(IE==="zimage"){
     const zo=N("ConditioningZeroOut",label+" Negative",x,y0+150,[],[["conditioning","CONDITIONING"]],[["CONDITIONING","CONDITIONING"]]);L(te,0,zo,0);
     const el=mkLat("EmptySD3LatentImage",y0+300);
-    const kk=N("KSampler",label+" Sampler",x,y0+450,[seed,"fixed",st,cg,"euler","simple",init?den:1],KI,[["LATENT","LATENT"]]);L(IG.m[0],IG.m[1],kk,0);L(te,0,kk,1);L(zo,0,kk,2);L(el,0,kk,3);
+    const kk=N("KSampler",label+" Sampler",x,y0+450,[seed,"fixed",st,cg,ISA,ISC,init?den:1],KI,[["LATENT","LATENT"]]);L(IG.m[0],IG.m[1],kk,0);L(te,0,kk,1);L(zo,0,kk,2);L(el,0,kk,3);
     dc=N("VAEDecode",label+" Decode",x,y0+700,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(kk,0,dc,0);L(IG.v,0,dc,1);}
    else{let cs=[te,0];
     const fg=N("FluxGuidance",label+" Guidance",x,y0+150,[cg],[["conditioning","CONDITIONING"]],[["CONDITIONING","CONDITIONING"]]);L(cs[0],cs[1],fg,0);cs=[fg,0];
@@ -291,19 +302,20 @@ function build(){
      const rl=N("ReferenceLatent",label+" Ref "+(j+1)+" Latent",x,yy+300,[],[["conditioning","CONDITIONING"],["latent","LATENT",{shape:7}]],[["CONDITIONING","CONDITIONING"]]);L(cs[0],cs[1],rl,0);L(en,0,rl,1);cs=[rl,0];});
     const yb=y0+300+rn.length*450;
     const el=mkLat("EmptyFlux2LatentImage",yb);
-    const sch=init?N("BasicScheduler",label+" Scheduler",x,yb+150,["simple",st,den],[M],[["SIGMAS","SIGMAS"]]):N("Flux2Scheduler",label+" Scheduler",x,yb+150,[st,gw,gh],[],[["SIGMAS","SIGMAS"]]);if(init)L(IG.m[0],IG.m[1],sch,0);
+    const f2=!init&&$("isch").value==="flux2",sch=f2?N("Flux2Scheduler",label+" Scheduler",x,yb+150,[st,gw,gh],[],[["SIGMAS","SIGMAS"]]):N("BasicScheduler",label+" Scheduler",x,yb+150,[ISC,st,init?den:1],[M],[["SIGMAS","SIGMAS"]]);if(!f2)L(IG.m[0],IG.m[1],sch,0);
     const nz=N("RandomNoise",label+" Noise",x,yb+300,[seed,"fixed"],[],[["NOISE","NOISE"]]);
     const gd=N("BasicGuider",label+" Guider",x,yb+450,[],[M,["conditioning","CONDITIONING"]],[["GUIDER","GUIDER"]]);L(IG.m[0],IG.m[1],gd,0);L(cs[0],cs[1],gd,1);
     const sp=N("SamplerCustomAdvanced",label+" Sampler",x,yb+600,[],SI,SO);L(nz,0,sp,0);L(gd,0,sp,1);L(IG.ks,0,sp,2);L(sch,0,sp,3);L(el,0,sp,4);
     dc=N("VAEDecode",label+" Decode",x,yb+800,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(sp,0,dc,0);L(IG.v,0,dc,1);}}
   return dc;};
+ if(IE==="h3"&&((RG&&RL.length)||JF))W.push("MiniMax H3 stills are made by the video model with the video sampler ("+$("smp").value+"), scheduler ("+$("sch").value+") and steps ("+$("steps").value+")."+($("turbo").checked?" Turbo 4-step mode is on, which makes stills look soft or painted. Use Qwen Image 2.1, Flux 2 or Z-Image Turbo for reference images and first frames.":""));
  if((RG&&RL.length)||JF){if(IE==="flux2"||IE==="zimage")W.push(IEN[IE]+" nodes follow ComfyUI's standard template layout and are unverified against your install. If a node shows red in ComfyUI, send me that workflow.");
   if(lr.length&&IE==="h3")W.push("Image LoRAs are ignored by the MiniMax H3 engine.");}
  if(RG&&RL.length){
   W.push("Reference images are generated in the workflow with "+IEN[IE]+" and saved to ComfyUI/output/ref/. Copy them into ComfyUI/input to reuse them as LoadImage files.");
   const rw=+$("rw").value||1024,rh=+$("rh").value||1024,sty=$("bst").value.trim();
   RL.forEach((r,i)=>{const k=i+1,x=-1600+i*600;
-   const dc=imgGen("Ref "+k,x,-2600,(r.d||r.n)+(sty?". "+sty:""),rw,rh,bsv<0?rnd+i:bsv+i,[]);
+   const dc=imgGen("Ref "+k,x,-2600,ILEAD+(r.d||r.n).replace(/[.\s]+$/,"")+(IST?". "+IST:"")+(sty?". "+sty:""),rw,rh,bsv<0?rnd+i:bsv+i,[]);
    const sv=N("SaveImageAdvanced","Save Ref "+k,x,dc.pos[1]+150,["ref/"+(r.f||("reference_"+k)).replace(/\.[a-z0-9]+$/i,""),"png","8-bit","sRGB"],[["images","IMAGE"]],[]);L(dc,0,sv,0);
    r.node=dc;if(!refImg)refImg=dc;});}
  if(MU){const mpt=$("mp").value.trim(),ms=Math.max(10,Math.min(240,+$("mseg").value||180)),nt=Math.min(30,Math.max(1,Math.ceil(total/ms)));
@@ -332,23 +344,37 @@ function build(){
   if(/three[- ]quarter|3\/4|over[- ]the[- ]shoulder|high angle|corner/.test(t))return "three-quarter";
   return "front";};
  const viewOf=s=>(s.v&&s.v!=="auto")?s.v:autoView(s.p+" "+(s.c||""));
+ const h3p=(nm,r,ty,k,set,sty0)=>"<Picture 1> is the original image of "+nm+(r.d?" ("+r.d+")":"")+". Keep the "+(ty==="location"?"room, furniture, decor and lighting":ty==="object"?"object, shape, materials and colours":"character's face, hair, body build, age, clothing and colours")+" exactly identical to <Picture 1>. "+set[k]+". "+(ty==="location"?"No people. ":"Plain neutral background, even lighting, one subject only. ")+"A still photograph, nothing moves, do not redesign anything"+(IST?". "+IST:"")+(sty0?". "+sty0:"");
+ const h3Ang=(label,x,y0,prompt,gw,gh,seed,org)=>{
+  const ins=[["clip","CLIP"],V,["audio_vae","VAE"],["ref_images.ref_image_0","IMAGE",{shape:7,label:"ref_image_0"}],["ref_images.ref_image_1","IMAGE",{shape:7,label:"ref_image_1"}],["ref_videos.ref_video_0","IMAGE",{shape:7,label:"ref_video_0"}],["ref_video_audios.ref_video_audio_0","AUDIO",{shape:7,label:"ref_video_audio_0"}],["ref_audios.ref_audio_0","AUDIO",{shape:7,label:"ref_audio_0"}],["prompt","STRING",{widget:{name:"prompt"}}],WI("width"),WI("height"),WI("length"),["ref_image_size","COMBO",{widget:{name:"ref_image_size"}}]];
+  const c=N("MiniMaxH3ReferenceToVideo",label+" Conditioning",x,y0,[prompt,gw,gh,5,$("ris").value],ins,[["positive","CONDITIONING"],["LATENT","LATENT"]]);
+  L(ck,0,c,0);L(vv,0,c,1);L(av,0,c,2);L(org,0,c,3);
+  const nz=N("RandomNoise",label+" Noise",x,y0+300,[seed,"fixed"],[],[["NOISE","NOISE"]]);
+  const gd=N("BasicGuider",label+" Guider",x,y0+450,[],[M,["conditioning","CONDITIONING"]],[["GUIDER","GUIDER"]]);L(fm,0,gd,0);L(c,0,gd,1);
+  const sc=N("BasicScheduler",label+" Scheduler",x,y0+600,[$("sch").value,+$("steps").value,dnv],[M],[["SIGMAS","SIGMAS"]]);L(fm,0,sc,0);
+  const sp=N("SamplerCustomAdvanced",label+" Sampler",x,y0+750,[],[["noise","NOISE"],["guider","GUIDER"],["sampler","SAMPLER"],["sigmas","SIGMAS"],["latent_image","LATENT"]],[["output","LATENT"],["denoised_output","LATENT"]]);L(nz,0,sp,0);L(gd,0,sp,1);L(ks,0,sp,2);L(sc,0,sp,3);L(c,1,sp,4);
+  const vd=N("VAEDecode",label+" Decode",x,y0+900,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(sp,0,vd,0);L(vv,0,vd,1);
+  const dc=N("ImageFromBatch",label+" Frame",x,y0+1050,[0,1],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(vd,0,dc,0);return dc;};
  if(AV){
-  const canGen=IE==="qwen"||IE==="flux2";
-  if(!canGen&&RA.some(r=>(r.node||r.f)&&r.x&&!r.a))W.push("Multi-angle references: "+IEN[IE]+" cannot take the original image as input, so angles are not generated. Pick Qwen Image 2.1 or Flux 2 as the image model, or fill in 'Your own angle images' on each reference card.");
+  const AEN=$("aeng").value,MAN=AEN==="manual",HA=AEN==="h3"&&MMV&&RM,canGen=HA||IE==="qwen"||IE==="flux2",manL=[];
+  if(AEN==="h3"&&!HA)W.push("MiniMax H3 angle generation needs the MiniMax video engine with Reference-to-video mode, so the image engine is used for angles instead.");
+  if(!MAN&&!canGen&&RA.some(r=>(r.node||r.f)&&r.x&&!r.a))W.push("Multi-angle references: "+IEN[IE]+" cannot take the original image as input, so angles are not generated. Pick Qwen Image 2.1 or Flux 2 as the image model, or fill in 'Your own angle images' on each reference card.");
   const sty0=$("bst").value.trim(),rw0=+$("rw").value||1024,rh0=+$("rh").value||1024;
   RA.forEach((r,i)=>{if(!(r.node||r.f)||!r.x)return;const map={},own={};
    (r.a||"").split(",").forEach(p=>{const q=p.split("="),k=(q[0]||"").trim().toLowerCase(),f=(q.slice(1).join("=")||"").trim();if(VL[k]&&f)own[k]=f;});
    const nm=r.n||("reference "+(i+1)),ty=r.t||"character",set=AVS[ty]||{},keys=Object.keys(VL).filter(k=>own[k]||set[k]);
    keys.forEach((k,j)=>{let nd=null;
-    if(own[k])nd=N("LoadImage","Reference "+(i+1)+" "+VL[k],-2550,-1000+(RA.length+i*5+j)*150,[own[k],"image"],[],[["IMAGE","IMAGE"],["MASK","MASK"]]);
-    else if(canGen){const org=r.node||(()=>{const o={r:r,i:i};return rNode(o);})(),what=ty==="location"?"place":ty==="object"?"object":"character",
-      same=ty==="location"?"identical architecture, layout, furniture, props, colours, lighting, time of day and art style":ty==="object"?"identical shape, materials, colours, markings and art style":"identical face, hair, body build, age, clothing, colours, accessories and art style";
-     const pr="The reference image shows "+nm+(r.d?" ("+r.d+")":"")+". Show the exact same "+what+": "+same+". "+set[k]+". "+(ty==="location"?"No people. ":"Plain neutral background, even lighting, one subject only. ")+"Do not redesign anything"+(sty0?". "+sty0:"");
-     const xx=-1600+(i*5+j)*600,dc=imgGen("Ref "+(i+1)+" "+VL[k],xx,-3900,pr,rw0,rh0,bsv<0?rnd+i:bsv+i,[org]);
+    if(own[k]||MAN){const fn=own[k]||((r.f?r.f.replace(/\.[a-z0-9]+$/i,""):("reference_"+(i+1)))+"_"+k+".png");if(!own[k])manL.push(fn);nd=N("LoadImage","Reference "+(i+1)+" "+VL[k],-2550,-1000+(RA.length+i*5+j)*150,[fn,"image"],[],[["IMAGE","IMAGE"],["MASK","MASK"]]);}
+    else if(canGen&&!MAN){const org=r.node||(()=>{const o={r:r,i:i};return rNode(o);})(),what=ty==="location"?"place":ty==="object"?"object":"character",
+      same=ty==="location"?"identical architecture, layout, furniture, props, colours, lighting, time of day and art style":ty==="object"?"identical shape, materials, colours, markings and art style":"identical face, hair, body build, age, clothing, colours, accessories and photographic look";
+     const I1=IE==="qwen"?"<image1>":"the reference image",pr=(IE==="qwen"?"Keep the "+(ty==="location"?"room, furniture and decor":"subject, face, hair, clothing and proportions")+" in <image1> unchanged. ":"")+(IE==="qwen"?"":"The reference image shows "+nm+(r.d?" ("+r.d+")":"")+". ")+"Show the exact same "+what+" as "+I1+": "+same+". "+set[k]+". "+(ty==="location"?"No people. ":"Plain neutral background, even lighting, one subject only. ")+"Preserve the original details, colours and lighting, do not redesign anything"+(IST?". "+IST:"")+(sty0?". "+sty0:"")+(IE==="qwen"?", sharp details":"");
+     const xx=-1600+(i*5+j)*600,dc=HA?h3Ang("Ref "+(i+1)+" "+VL[k],xx,-3900,h3p(nm,r,ty,k,set,sty0),rw0,rh0,bsv<0?rnd+i:bsv+i,org):imgGen("Ref "+(i+1)+" "+VL[k],xx,-3900,pr,rw0,rh0,bsv<0?rnd+i:bsv+i,[org]);
      N("SaveImageAdvanced","Save Ref "+(i+1)+" "+VL[k],xx,dc.pos[1]+150,["ref/"+(r.f||("reference_"+(i+1))).replace(/\.[a-z0-9]+$/i,"")+"_"+k,"png","8-bit","sRGB"],[["images","IMAGE"]],[]);L(dc,0,nodes[nodes.length-1],0);nd=dc;}
     if(nd)map[k]=nd;});
    VU[i]=map;});
-  W.push("Multi-angle references: each reference is generated from its original image in "+Object.keys(VL).length+" possible angles (saved to ComfyUI/output/ref/). A scene links the original plus the angle that matches its camera view, so a back shot gets the back view and a side shot gets the side view. Scene camera view comes from the scene's own setting, or is read from its prompt when set to Auto.");
+  if(MAN&&manL.length)W.push("Manual angle images: no angle images are generated. Put these files in ComfyUI/input, or pick your own in the Load Image nodes titled 'Reference N <view>' (they sit beside the original references): "+manL.join(", ")+". Untick 'Create extra angles' on a reference card to skip its angles. Scenes use the angle matching their camera view.");
+  if(HA)W.push("Angle views are made by MiniMax H3 reference-to-video (the original image is <Picture 1>, one frame is kept), so Qwen only makes the first reference image and no second image model is loaded. Each angle costs one short H3 run.");
+  if(!MAN)W.push("Multi-angle references: each reference is generated from its original image in "+Object.keys(VL).length+" possible angles (saved to ComfyUI/output/ref/). A scene links the original plus the angle that matches its camera view, so a back shot gets the back view and a side shot gets the side view. Scene camera view comes from the scene's own setting, or is read from its prompt when set to Auto.");
  }
  const refLog={},vLog={};
  const pick=s=>{const list=RA.map((r,i)=>({r:r,i:i})).filter(o=>o.r.node||o.r.f),sel=($("rlink").value==="list"?(s.rr||""):"").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);let m;
@@ -616,10 +642,10 @@ function applyRes(){const r=$("res").value,mm=$("ve").value==="mm";if(mm&&r!=="c
  $("wW").classList.toggle("hid",mm&&r!=="custom");$("hW").classList.toggle("hid",mm&&r!=="custom");}
 function resFromWH(){const v=$("w").value+"x"+$("h").value;$("res").value=[...$("res").options].some(o=>o.value===v)?v:"custom";}
 function badEnc(ie,q){q=String(q).toLowerCase();return ie==="qwen"?/32b|minimax|mistral|gemma|umt5|_4b/.test(q):ie==="zimage"?/32b|minimax|8b|mistral|gemma|umt5/.test(q):ie==="flux2"?/qwen3vl|minimax|umt5/.test(q):false;}
-function fixImg(){const d=IDEF[$("ie").value];if(d&&badEnc($("ie").value,$("qte").value))["qun","qte","qvae","rst","rcfg"].forEach((id,k)=>{$(id).value=d[k];});}
+function fixImg(){const d=IDEF[$("ie").value];if(d&&badEnc($("ie").value,$("qte").value))IDIDS.forEach((id,k)=>{$(id).value=d[k];});}
 function applyEngine(){const ve=$("ve").value,im=$("ie").value;document.querySelectorAll("[data-img]").forEach(e=>e.classList.toggle("hid",!e.dataset.img.split(" ").includes(im)));document.querySelectorAll("[data-eng]").forEach(e=>e.classList.toggle("hid",!e.dataset.eng.split(" ").includes(ve)));
  [...$("ie").options].forEach(o=>{if(o.value==="h3")o.disabled=ve!=="mm";});if(ve!=="mm"&&$("ie").value==="h3"){$("ie").value="qwen";fixImg();}}
-function sync(){applyEngine();applyRes();renderSuggest();const ra=$("rang").checked;$("rangBox").classList.toggle("hid",!ra);document.querySelectorAll(".rxw,.rvw").forEach(e=>e.classList.toggle("hid",!ra));document.querySelectorAll(".rlw").forEach(e=>e.classList.toggle("hid",$("rlink").value!=="list"));$("refHint").textContent=(!$("rm").checked&&$("ve").value==="mm"&&refs().some(r=>r.f))?"Not linked to MiniMax yet: tick 'Reference-to-video mode' in the options below so these images are linked as <Picture N>.":"";document.body.classList.toggle("kon",$("kf").checked||$("bib").checked||$("ext").checked||$("rm").checked);$("bPlan").style.display=$("bFF").style.display=$("exp").checked?"":"none";}
+function sync(){const ie0=$("ie").value,d0=IDEF[ie0];if(d0)$("isHint").textContent="Best for "+({qwen:"Qwen Image 2.1",flux2:"Flux 2",zimage:"Z-Image Turbo"})[ie0]+": "+d0[5]+" sampler, "+(d0[6]==="flux2"?"Flux 2 scheduler":d0[6]+" scheduler")+", "+d0[3]+" steps. Changing the image model resets these to its defaults.";applyEngine();applyRes();renderSuggest();const ra=$("rang").checked;$("rangBox").classList.toggle("hid",!ra);document.querySelectorAll(".rxw,.rvw").forEach(e=>e.classList.toggle("hid",!ra));document.querySelectorAll(".rlw").forEach(e=>e.classList.toggle("hid",$("rlink").value!=="list"));$("refHint").textContent=(!$("rm").checked&&$("ve").value==="mm"&&refs().some(r=>r.f))?"Not linked to MiniMax yet: tick 'Reference-to-video mode' in the options below so these images are linked as <Picture N>.":"";document.body.classList.toggle("kon",$("kf").checked||$("bib").checked||$("ext").checked||$("rm").checked);$("bPlan").style.display=$("bFF").style.display=$("exp").checked?"":"none";}
 function plan(r){const sp=t=>t.split("\n").map(x=>x.trim()).filter(Boolean);
  return JSON.stringify({output:r.fin,fps:r.fps,width:r.w,height:r.h,style:$("bst").value.trim(),characters:sp($("bch").value),reference_images:refs().map(r=>({name:r.n,file:r.f,description:r.d,type:r.t,angle_files:r.a,extra_angles:r.x})),global_sound:$("bsn").value.trim(),external_tts:r.ext,
  scenes:r.S0.map((s,i)=>({scene:i+1,prompt:s.p,duration_s:s.d,frames:vl(s.d||0,r.fps),first_frame:r.kfOn?s.sf:s.f,last_frame:r.kfOn?s.lf:s.l,hard_cut:i===0||s.k,camera_view:s.v,dialogue:sp(s.dl),sound:s.sn,segment_prefix:r.base+"_scene_"+String(i+1).padStart(2,"0")}))},null,2);}
@@ -705,9 +731,12 @@ try{const q=JSON.parse(localStorage.getItem("sgPrefs")||"null");if(q){["g","r","
 $("sgDet").onclick=detectGpu;$("sgApply").onclick=applySuggest;
 const EDEF={mm:{w:512,h:288,fps:24,smp:"res_multistep"},wan21:{w:832,h:480,fps:16,smp:"uni_pc",wm1:"wan2.1_i2v_480p_14B_fp16.safetensors",wte:"umt5_xxl_fp8_e4m3fn_scaled.safetensors",wvae:"wan_2.1_vae.safetensors",wcv:"clip_vision_h.safetensors",wl1:"lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"},wan22:{w:832,h:480,fps:16,smp:"euler",wm1:"wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",wm2:"wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",wte:"umt5_xxl_fp8_e4m3fn_scaled.safetensors",wvae:"wan_2.1_vae.safetensors",wl1:"wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",wl2:"wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"},ltx23:{w:768,h:512,fps:24,smp:"euler",lun:"ltx-2.3-22b-dev.safetensors",lt1:"gemma_3_12B_it.safetensors",lt2:"ltx-2.3_text_projection_bf16.safetensors",lvae:"LTX23_video_vae_bf16.safetensors",lav:"ltx-2.3-22b-dev.safetensors",llo:"ltx-2.3-22b-distilled-lora-384.safetensors"},ltx25:{w:768,h:512,fps:24,smp:"euler",lun:"ltx-2.5-22b-dev.safetensors",lt1:"gemma_3_12B_it.safetensors",lt2:"ltx-2.5_text_projection_bf16.safetensors",lvae:"LTX25_video_vae_bf16.safetensors",lav:"ltx-2.5-22b-dev.safetensors",llo:"ltx-2.5-22b-distilled-lora-384.safetensors"}};
 $("ve").addEventListener("change",()=>{const d=EDEF[$("ve").value];if(d)Object.keys(d).forEach(k=>{$(k).value=d[k];});resFromWH();autofill();refresh();});
-const IDEF={qwen:["qwen_image_2.1_int8_convrot.safetensors","qwen3vl_8b_int8_convrot.safetensors","qwen_image_2.1_vae_bf16.safetensors",40,1],flux2:["flux2_dev_fp8mixed.safetensors","mistral_3_small_flux2_bf16.safetensors","flux2-vae.safetensors",20,4],zimage:["z_image_turbo_bf16.safetensors","qwen_3_4b.safetensors","ae.safetensors",8,1]};
-$("ie").addEventListener("change",()=>{const d=IDEF[$("ie").value];if(d)["qun","qte","qvae","rst","rcfg"].forEach((id,k)=>{$(id).value=d[k];});refresh();});
-const TS=[["video_engine","ve"],["sharpen_strength","rsa"],["refresh_denoise","rfd"],["continuation_prompt","ctp"],["resolution_preset","res"],["reference_image_fit","rfit"],["reference_image_size","ris"],["upscale_model","upm"],["upscale_native_scale","ups"],["upscale_final_scale","upf"],["width","w"],["height","h"],["fps","fps"],["default_scene_duration_s","dd"],["output_name","fin"],["negative_prompt","neg"],["first_frame_mode","mode"],["image_engine","ie"],["image_loras","ilr"],["first_frame_width","kw"],["first_frame_height","kh"],["max_references_per_first_frame","jmax"],["reanchor_every_n_scenes","jn"],["reference_linking","rlink"],["character_angle_prompts","rav"],["location_angle_prompts","rav2"],["object_angle_prompts","rav3"],["music_checkpoint","mck"],["music_seconds_per_track","mseg"],["music_volume","mvol"]];
+const IDIDS=["qun","qte","qvae","rst","rcfg","isamp","isch"];
+const IDEF={qwen:["qwen_image_2.1_int8_convrot.safetensors","qwen3vl_8b_int8_convrot.safetensors","qwen_image_2.1_vae_bf16.safetensors",40,1,"euler","simple"],flux2:["flux2_dev_fp8mixed.safetensors","mistral_3_small_flux2_bf16.safetensors","flux2-vae.safetensors",20,4,"euler","flux2"],zimage:["z_image_turbo_bf16.safetensors","qwen_3_4b.safetensors","ae.safetensors",8,1,"res_multistep","simple"]};
+(function(){const fill=(id,src,extra)=>{const t=$(id);t.innerHTML=[...$(src).options].map(o=>"<option value=\""+o.value+"\">"+o.textContent+"</option>").join("")+(extra||"");};
+ fill("isamp","smp");fill("isch","sch","<option value=\"flux2\">Flux 2 scheduler (Flux 2 default)</option>");$("isamp").value="euler";$("isch").value="simple";})();
+$("ie").addEventListener("change",()=>{const d=IDEF[$("ie").value];if(d)IDIDS.forEach((id,k)=>{$(id).value=d[k];});refresh();});
+const TS=[["video_engine","ve"],["angle_engine","aeng"],["sharpen_strength","rsa"],["refresh_denoise","rfd"],["continuation_prompt","ctp"],["resolution_preset","res"],["reference_image_fit","rfit"],["reference_image_size","ris"],["upscale_model","upm"],["upscale_native_scale","ups"],["upscale_final_scale","upf"],["width","w"],["height","h"],["fps","fps"],["default_scene_duration_s","dd"],["output_name","fin"],["negative_prompt","neg"],["first_frame_mode","mode"],["image_engine","ie"],["image_loras","ilr"],["image_sampler","isamp"],["qwen_cache_node","qcache"],["image_scheduler","isch"],["first_frame_width","kw"],["first_frame_height","kh"],["max_references_per_first_frame","jmax"],["reanchor_every_n_scenes","jn"],["reference_linking","rlink"],["character_angle_prompts","rav"],["location_angle_prompts","rav2"],["object_angle_prompts","rav3"],["music_checkpoint","mck"],["music_seconds_per_track","mseg"],["music_volume","mvol"]];
 const TO=[["audio","aud"],["reference_mode","rm"],["reference_last_frame_continuity","gc"],["keyframes","kf"],["consistency_bible","bib"],["external_tts","ext"],["skip_in_graph_join","nj"],["generate_reference_images","rg"],["multi_angle_references","rang"],["generate_first_frames","jf"],["next_first_frame_as_last_frame","jl"],["music","mu"],["force_scene_order","lk"],["subgraph_packing","sg"],["plan_export","exp"],["upscale","up"],["sharpen_chained_frames","rfs"],["upscale_round_trip_chained_frames","rfu"],["image_model_refresh_chained_frames","rfi"]];
 function tplAdv(){const o={};document.querySelectorAll("input[id],select[id],textarea[id]").forEach(e=>{if(e.id==="out"||e.id==="tplFile")return;o[e.id]=e.type==="checkbox"?e.checked:e.value;});return o;}
 function tplGet(){
