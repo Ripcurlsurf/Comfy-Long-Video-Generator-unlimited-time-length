@@ -1,8 +1,8 @@
-MiniMax H3 ComfyUI Local Workflow Generator
+ComfyUI Local Workflow Generator
 Build production-ready, multi-scene ComfyUI workflows for long AI video generation. A standalone, zero-install local HTML generator optimized for MiniMax H3, Wan 2.1/2.2, LTX Video, Qwen Image 2.1, and Flux 2.
 
 Overview
-The MiniMax H3 ComfyUI Local Generator is an offline, client-side web application that automates the creation of complex ComfyUI workflow JSON files. It solves the primary bottlenecks in generative AI filmmaking: character drift across scenes, canvas clutter with massive node counts, VRAM limits during long-sequence rendering, and multi-angle asset conditioning.
+The MiniMax H3, LTX and Wan - ComfyUI Local Generator is an offline, client-side web application that automates the creation of complex ComfyUI workflow JSON files. It solves the primary bottlenecks in generative AI filmmaking: character drift across scenes, canvas clutter with massive node counts, VRAM limits during long-sequence rendering, and multi-angle asset conditioning.
 
 Generate multi-scene sequences, maintain strict character consistency using image conditioning or keyframing, configure audio tracks, and export modular workflow JSON files ready to drag and drop straight into ComfyUI.
 
