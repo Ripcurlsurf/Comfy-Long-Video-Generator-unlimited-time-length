@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="app-version" content="2026.10.07.1">
 <title>Minimax-H3 ComfyUI Local Workflow Generator</title>
 <style>
 *{box-sizing:border-box}
@@ -27,9 +28,11 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px ui-monospace,C
 #out{min-height:160px;font:11px ui-monospace,Consolas,monospace}
 .hid{display:none!important}
 .kx{margin-top:6px}
+.upd{padding:5px 16px;background:#1c1f25;border-bottom:1px solid #2c313a;font-size:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}.upd.new{background:#3a2f12;border-bottom-color:#8a6d1f}.upd a{color:#7fb5ff}.upd button{padding:2px 8px;font-size:12px}.upd label{color:#8a93a0;display:inline-flex;gap:4px;align-items:center;margin:0}
 </style></head><body>
+<div class="upd" id="updBar"><span id="updTxt"></span><a id="updLink" class="hid" target="_blank" rel="noopener" href="https://github.com/Ripcurlsurf/Comfy-Long-Video-Generator-unlimited-time-length/blob/main/comfyui_local_generator_v2.html"><b>Get the new version</b></a><button id="updBtn" class="s">Check for updates</button><a target="_blank" rel="noopener" href="https://github.com/Ripcurlsurf/Comfy-Long-Video-Generator-unlimited-time-length">GitHub page</a><label><input type="checkbox" class="updAuto"> check when the page opens</label></div>
 <header><h1>Minimax-H3 &rarr; ComfyUI workflow generator</h1>
-<small>100% offline &middot; RAM 192 GB &middot; VRAM 32 GB &middot; single local GPU &middot; emits ComfyUI frontend (UI) JSON only</small></header>
+<small>Works offline (only the update check above contacts GitHub) &middot; RAM 192 GB &middot; VRAM 32 GB &middot; single local GPU &middot; emits ComfyUI frontend (UI) JSON only</small></header>
 <div class="bar">
 <button id="bAdd">Add Scene</button><button id="bRem" class="s">Remove Scene</button><button id="bEx" class="s">Load Example</button><button id="bTpl" class="s">Generate Template</button><button id="bSave">Save Project</button><button id="bUp" class="s">Load Project / Filled Template</button><button id="bRestore" class="s hid">Restore last session</button><input type="file" id="tplFile" accept=".json,.txt,application/json,text/plain" style="display:none"><span id="tplMsg" style="font-size:12px;margin-left:8px"></span>
 <button id="bGen">Generate Workflow JSON</button><button id="bCopy">Copy Workflow JSON</button><button id="bDl">Download Workflow JSON</button><button id="bClr" class="s">Clear JSON</button><span id="genMsg" style="font-size:12px;margin-left:8px"></span><button id="bPlan" class="s" style="display:none">Download Plan JSON</button><button id="bFF" class="s" style="display:none">Download ffmpeg script</button>
@@ -928,18 +931,4 @@ $("bTk").onclick=allTakes;
 $("bDS").onclick=()=>{dl("dialogue_sheet.csv",dialogueSheet(),"text/csv");$("qMsg").textContent="Dialogue sheet downloaded: one row per line. Make one audio file per scene (dialogue/scene_NN.wav) with any text-to-speech tool and the finishing script mixes it in.";};
 $("bAud").onclick=()=>{const r=build(true);if(r.E.length){alert("Cannot generate the audio workflow:\n- "+r.E.join("\n- "));return;}dl(r.broot+"_audio_workflow.json",JSON.stringify(r.wf,null,2),"application/json");$("qMsg").textContent="Audio workflow downloaded (ACE-Step music, covers the whole film, fixed seeds). Run it separately; the finishing script mixes the tracks.";};
 $("bSeed").onclick=()=>{$("pseed").value=Math.floor(Math.random()*4294967295);$("qMsg").textContent="New project seed. Reference images, first frames and takes will all change; keep it fixed once you like the references.";refresh();};
-if($("pseed").value==="")$("pseed").value=Math.floor(Math.random()*4294967295);
-const copyOut=()=>{const t=gen();if(!t)return;
- const fb=()=>{$("out").select();document.execCommand("copy");};
- if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).catch(fb);else fb();};
-$("bCopy").onclick=copyOut;$("bCopy2").onclick=copyOut;
-$("bDl").onclick=()=>{const t=gen();if(!t)return;
- const u=URL.createObjectURL(new Blob([t],{type:"application/json"})),a=document.createElement("a");
- a.href=u;a.download="minimax_h3_workflow.json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);};
-["turbo","lora","vae"].forEach(i=>$(i).addEventListener("change",()=>{autofill();refresh();}));
-$("scenes").addEventListener("change",()=>{autofill();refresh();});
-document.querySelector("main").addEventListener("input",refresh);
-$("dd").addEventListener("change",()=>{});
-addScene("",15);addRef();autofill();refresh();
-})();
-</script></body></html>
+if($("pseed"
