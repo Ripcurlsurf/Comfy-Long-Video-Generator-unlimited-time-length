@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="app-version" content="2026.10.08.8">
+        <meta name="app-version" content="2026.10.08.9">
         <title>Minimax-H3 ComfyUI Local Workflow Generator</title>
         <style>
             * {
@@ -1310,7 +1310,7 @@ three-quarter: three-quarter view from above</textarea>
                 dc=N("VAEDecode",label+" Decode",x,yb+800,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(sp,0,dc,0);L(IG.v,0,dc,1);}}
               return dc;};
              if(IE==="h3"&&((RG&&RL.length)||JF))W.push("MiniMax H3 stills are made by the video model with the video sampler ("+$("smp").value+"), scheduler ("+$("sch").value+") and steps ("+$("steps").value+")."+($("turbo").checked?" Turbo 4-step mode is on, which makes stills look soft or painted. Use Qwen Image 2.1, Flux 2 or Z-Image Turbo for reference images and first frames.":""));
-             if((RG&&RL.length)||JF){if(IE==="flux2"||IE==="zimage")W.push(IEN[IE]+" nodes follow ComfyUI's standard template layout and are unverified against your install. If a node shows red in ComfyUI, send me that workflow.");
+             if((RG&&RL.length)||JF){if(IE==="flux2"||IE==="zimage")W.push(IEN[IE]+" nodes follow ComfyUI's standard template layout and are unverified against your install. If a node is showing in red, you need to change it manually in the workflow: install the missing node pack (ComfyUI Manager > Install Missing Custom Nodes), or pick the correct model file or node name in that node.");
               if(lr.length&&IE==="h3")W.push("Image LoRAs are ignored by the MiniMax H3 engine.");}
              if(RG&&RL.length){
               W.push("Reference images without a filename ("+RL.map(r=>r.n||"unnamed").join(", ")+") are generated in the workflow with "+IEN[IE]+", linked to the scenes and saved to ComfyUI/output/ref/. Copy them into ComfyUI/input and type the filename on the reference card to reuse them without regenerating.");
@@ -1482,7 +1482,7 @@ three-quarter: three-quarter view from above</textarea>
                const kb=N("KSamplerAdvanced","Sampler Low "+t,x,850,["disable",seed,"fixed",ST,CF,$("smp").value,$("sch").value,half,10000,"disable"],KI2,[["LATENT","LATENT"]]);L(AL.m2,0,kb,0);L(wi,0,kb,1);L(wi,1,kb,2);L(ka,0,kb,3);outn=kb;}
               const vd=N("VAEDecode","Video Decode "+t,x,1050,[],[["samples","LATENT"],V],[["IMAGE","IMAGE"]]);L(outn,0,vd,0);L(AL.v,0,vd,1);
               return {vd:vd,sp:outn,ad:null};};
-             if(!MMV){W.push(VEN+" nodes follow ComfyUI's official template layout and are unverified against your install. If a node shows red in ComfyUI, send me that workflow.");
+             if(!MMV){W.push(VEN+" nodes follow ComfyUI's official template layout and are unverified against your install. If a node is showing in red, you need to change it manually in the workflow: install the missing node pack (ComfyUI Manager > Install Missing Custom Nodes), or pick the correct model file or node name in that node.");
               if($("kf").checked||$("jl").checked)W.push("Last-frame inputs are only wired for MiniMax H3; "+VEN+" uses first frames only.");
               if($("rm").checked)W.push("Reference-to-video mode is MiniMax-only and is ignored for "+VEN+".");
               if(FAM==="ltx"&&(w%32||h%32))W.push("LTX width/height should be multiples of 32.");
