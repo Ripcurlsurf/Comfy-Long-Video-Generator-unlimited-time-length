@@ -1,260 +1,180 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MiniMax H3 ComfyUI Local Generator - README</title>
-    <style>
-        :root {
-            --bg-color: #0d1117;
-            --text-color: #c9d1d9;
-            --heading-color: #f0f6fc;
-            --accent-color: #58a6ff;
-            --border-color: #30363d;
-            --code-bg: #161b22;
-            --blockquote-bg: #1f6feb15;
-            --table-alt: #161b22;
-        }
+ComfyUI Local Generator
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            line-height: 1.6;
-            margin: 0;
-            padding: 2rem;
-        }
+A single-file, offline HTML tool that generates ComfyUI workflow JSON for long, multi-scene videos using the MiniMax H3 model. Describe your scenes, configure your settings, and download a ready-to-use workflow you can drag directly into ComfyUI.
 
-        .markdown-body {
-            max-width: 900px;
-            margin: 0 auto;
-            background-color: var(--bg-color);
-            padding: 2rem;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-        }
+There is nothing to install and no server to run. Simply open the HTML file in any modern web browser, configure your project, and export.
 
-        h1, h2, h3 {
-            color: var(--heading-color);
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 0.3em;
-            margin-top: 24px;
-            margin-bottom: 16px;
-        }
+## Features
 
-        h1 { font-size: 2em; }
-        h2 { font-size: 1.5em; }
-        h3 { font-size: 1.25em; border-bottom: none; }
+- **Video Engine Selector:** Choose between MiniMax H3, Wan 2.1, Wan 2.2, LTX 2.3, or LTX 2.5. Settings that do not apply to the selected engine are automatically hidden, and engine defaults (resolution, frame rate, sampler, and model paths) update dynamically.
+- **Image Model Selector:** Choose Qwen Image 2.1, Flux 2, Z-Image Turbo, or *"Same as video model"* (MiniMax H3 stills; MiniMax only). Automatically configures model files, LoRAs, and node pipelines for generated references and first frames.
+- **Dedicated Image Sampler and Scheduler:** Separate controls from video generation:
+  - **Qwen Image 2.1:** `euler` with `simple` (40 steps).
+  - **Flux 2:** `euler` with `Flux 2` scheduler (20 steps, guidance 4).
+  - **Z-Image Turbo:** `res_multistep` with `simple` (8 steps, CFG 1).
+  - *"Same as video model"* stills share the video sampler, scheduler, and step count (Turbo mode can cause soft outputs; a dedicated image model is recommended for references).
+- **Photorealistic Reference Prompts:** Reference and first-frame prompts prepend `"The image is a photorealistic photograph of..."` and append an editable *Image style* line (optimized for Qwen Image 2.1 conventions). A warning displays if a description is under 20 words to prevent stylized or illustrative drift. If the style mentions painting, illustration, or 3D, the photographic opening is omitted automatically.
+- **MiniMax Aspect and Resolution Presets:** Supports official 16:9 sizes alongside 9:16, 1:1, 4:3, 3:4, and 21:9 at matching megapixel increments (all multiples of 32), plus custom width and height inputs. Reference images are automatically padded or center-cropped to the target aspect ratio to avoid stretching.
+- **Long-Film Detail Preservation:** Mitigates compression and softening across chained scenes using three optional cleanup stages:
+  1. High-frequency sharpening pass.
+  2. Upscale-model round-trip.
+  3. Image-to-image refresh that preserves active references.
+- **Suggested Settings Presets:** Choose a target (Fast Preview, Balanced, Best Quality, Long Film) and hardware profile (RAM/VRAM) to auto-configure resolutions, steps, caching, join behaviors, and quality filters. Includes a "Detect GPU" button to detect your graphics card and prefill estimated VRAM.
+- **Reference Sheets and Angle Expansion:** 
+  - Exceeds the native 9-reference limit for MiniMax by tiling additional reference inputs into composite reference sheets.
+  - Generates multi-angle turnarounds (Character: front, left, right, back, three-quarter; Location: main, left, right, reverse, high corner) directly from a primary reference image to maintain subject consistency.
+- **Production Pipeline Utilities:** Includes scene range exports, lossless PNG frame sequence output, dependency locking for strictly sequential execution, subgraph packing for responsive node graphs, and an automated `ffmpeg` stitching script.
 
-        p {
-            margin-top: 0;
-            margin-bottom: 16px;
-        }
+---
 
-        a {
-            color: var(--accent-color);
-            text-decoration: none;
-        }
+## Core Architecture & Custom Nodes
 
-        a:hover {
-            text-decoration: underline;
-        }
+### Activate Reference Images Switch
+Located at the top of the **Reference images** section (disabled by default):
+- **Off:** Hides reference lists, filenames, angle configurations, aspect options, and scene-linking controls. No reference images are passed into the workflow.
+- **On (MiniMax):** Activates Reference-to-Video mode (`MiniMaxH3ReferenceToVideo`), routing references as `<Picture N>` inputs.
+- **On (Wan / LTX):** Because Wan and LTX lack native multi-reference inputs, enabling this switch automatically turns on *Generate scene first frames* (with re-anchoring every scene), directing Qwen or Flux 2 to construct each scene's initial frame from the references, the previous last frame, and the scene prompt.
 
-        ul {
-            padding-left: 2rem;
-            margin-top: 0;
-            margin-bottom: 16px;
-        }
+### Output Naming Convention
+Default output filenames adapt dynamically based on the active video engine (e.g., `wan22_final_video.mp4`, `ltx25_final_video.mp4`, `minimax_h3_final_video.mp4`). Scene clips, first frames, reference images, production plans, and workflow exports reflect this prefix unless manually overwritten.
 
-        li {
-            margin-bottom: 0.25em;
-        }
+### Photographic Finish Custom Node (`RefPhotoFinish`)
+To prevent flat or overly smooth, plastic AI textures without running extra diffusion passes:
+1. Check **Photographic finish** under *Video and image engines*.
+2. Click **Download the custom nodes** to download `ripcurlsurf_comfy.zip`.
+3. Extract the archive into your ComfyUI directory:  
+   `ComfyUI/custom_nodes/ripcurlsurf_comfy/` (containing `__init__.py` and `refimagetools.py`).
+4. Restart ComfyUI.
 
-        strong {
-            color: var(--heading-color);
-        }
+This node applies procedural color and tone matching (for generated angle consistency), restores high-frequency texture, and applies fine film grain (default strengths: color `0.7`, detail `0.6`, grain `0.3`).
 
-        code {
-            background-color: var(--code-bg);
-            padding: 0.2em 0.4em;
-            border-radius: 6px;
-            font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
-            font-size: 85%;
-        }
+### Fallback Node Handling (`Load Image (optional)`)
+Included within `refimagetools.py`. If a designated manual angle file is missing from `ComfyUI/input/`, the node passes the original reference through rather than terminating the queue with a missing-file error.
 
-        blockquote {
-            margin: 0 0 16px 0;
-            padding: 0.5rem 1rem;
-            color: #8b949e;
-            border-left: 0.25em solid var(--accent-color);
-            background-color: var(--blockquote-bg);
-            border-radius: 0 6px 6px 0;
-        }
+---
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 16px;
-            overflow: hidden;
-            border-radius: 6px;
-            border: 1px solid var(--border-color);
-        }
+## Requirements
 
-        th, td {
-            padding: 10px 14px;
-            border: 1px solid var(--border-color);
-            text-align: left;
-        }
+- **ComfyUI:** A recent release with native subgraph support.
+- **Video Nodes:** `MiniMaxH3ImageToVideo`, `MiniMaxH3ReferenceToVideo`, `SamplerCustomAdvanced`, `CreateVideo`, `SaveVideo`, and associated standard nodes.
+- **Model Files:**
+  - MiniMax H3 first/last-frame and/or `ref2va` checkpoints, text encoder, video VAE, and audio VAE.
+  - Image generation models (e.g., Qwen Image 2.1 with `TextEncodeQwenImage21` and `QwenImage21Cache`, Flux 2, or Z-Image Turbo).
+- **Video Assembly (Optional):** `ffmpeg` and a Bash environment (Linux, macOS, WSL, or Git Bash for Windows).
 
-        th {
-            background-color: var(--code-bg);
-            color: var(--heading-color);
-        }
+> *Note: Default model filenames in the generator can be edited to match your local `ComfyUI/models/` setup.*
 
-        tr:nth-child(even) {
-            background-color: var(--table-alt);
-        }
+---
 
-        .badges {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 16px;
-            flex-wrap: wrap;
-        }
+## Quick Start
 
-        .badge {
-            display: inline-block;
-            padding: 4px 8px;
-            font-size: 12px;
-            font-weight: 600;
-            line-height: 1;
-            color: #fff;
-            background-color: #2ea043;
-            border-radius: 6px;
-        }
+1. Open `minimax_h3_comfyui_local_generator_v2.html` in your browser (or rename it to `index.html` to host via GitHub Pages).
+2. Set your desired **Resolution**, **FPS**, and **Scene Duration**.
+3. Add scenes manually with specific prompts, or load an AI-assisted plan via **Upload Filled Template**.
+4. Select your **Continuity Mode**.
+5. Click **Generate Workflow**, then click **Download Workflow JSON**.
+6. Drag the downloaded JSON file into ComfyUI. Place any referenced source images into `ComfyUI/input/`.
+7. Queue the workflow. Output video segments are saved to `ComfyUI/output/video/`.
 
-        .badge-blue { background-color: #1f6feb; }
-        .badge-orange { background-color: #bc4c00; }
+---
 
-        hr {
-            height: 0.25em;
-            padding: 0;
-            margin: 24px 0;
-            background-color: var(--border-color);
-            border: 0;
-        }
-    </style>
-</head>
-<body>
+## Continuity Modes
 
-<div class="markdown-body">
+| Mode | Consistency Mechanism | Notes |
+| :--- | :--- | :--- |
+| **Last-frame chain** | The last frame of Scene $N$ serves as the first frame of Scene $N+1$. | Simple and smooth; minor compression artifacts can accumulate over long sequences without cleanup passes. |
+| **First + last keyframes** | Each scene generates between defined starting and ending keyframe images. | You provide or generate $N+1$ keyframes using an image model. Frames re-anchor to primary references to eliminate long-term drift. |
+| **Reference-to-video mode** | Master reference images pass directly into each scene as `<Picture N>` inputs. | Uses the MiniMax `ref2va` model. First and last frame inputs are bypassed; visual continuity is maintained via reference conditioning. |
 
-    <h1>MiniMax H3 ComfyUI Local Generator</h1>
+---
 
-    <div class="badges">
-        <span class="badge badge-blue">Status: Community Project</span>
-        <span class="badge">100% Offline</span>
-        <span class="badge badge-orange">ComfyUI Compatible</span>
-    </div>
+## Configuration Options
 
-    <blockquote>
-        <strong>Developer's Note:</strong> I am developing my own script to create very long movies. I explored ComfyUI and Pinokio—both are great platforms, but they have limitations. ComfyUI requires extra nodes to achieve difficult tasks, which heavily consumes resources, especially RAM. These scripts work well within ComfyUI, but I am branching out externally while keeping this project active in case ComfyUI improves its backend.
-    </blockquote>
+- **First + Last Keyframes:** Connects first and last frames into H3 using filename patterns such as `keyframe_{n}.png`. Enabling "Hard cut" on a scene starts a fresh keyframe pair.
+- **Consistency Bible:** Automatically injects global visual style, matched character descriptions, and sound design directives into every scene prompt.
+- **External TTS:** Instructs H3 to generate ambient environmental audio and sound effects only, reserving vocal space for external TTS dialogue.
+- **Film-Wide Music:** Generates continuous background music using ACE-Step from a single prompt, suppresses per-scene H3 music generation, and configures the `ffmpeg` assembly script to mix music under the video.
+- **Skip In-Graph Join:** Saves each scene as an independent MP4 file, delegating concatenation to `ffmpeg`. Strongly recommended for long sequences to prevent Out-Of-Memory (OOM) errors during VRAM decoding.
+- **Force Scene Order:** Injects hidden execution dependency links so scenes generate sequentially rather than in arbitrary worker order.
+- **Subgraph Packing:** Consolidates each scene pipeline into an individual subgraph node, keeping the ComfyUI canvas organized and responsive.
+- **Scene Ranges:** Renders specific subsets of scenes (e.g., `3, 5, 10–14`) while preserving global scene numbering, context links, and random seeds.
 
-    <p>A powerful, single-file, offline HTML tool that effortlessly builds advanced ComfyUI workflow JSONs for long, multi-scene AI videos using the <strong>MiniMax H3</strong>, <strong>Wan 2.1</strong>, <strong>Wan 2.2</strong>, <strong>LTX 2.3</strong>, and <strong>LTX 2.5</strong> models.</p>
-    
-    <p>Describe your scenes, configure your production settings, and instantly download a complete workflow ready to drag straight into ComfyUI. No installation required, no server to run. Just open the HTML file in any browser, fill out your project, and export.</p>
+---
 
-    <blockquote>
-        <strong>Status:</strong> Community project. Not affiliated with MiniMax, Comfy, or Qwen. Generated workflows are built from standard example templates for H3, Wan, LTX, and Qwen Image nodes. <br>
-        <em>Tip:</em> Test with a short 2–3 scene preview run before committing to a heavy, multi-scene render, and verify model filenames against your local ComfyUI installation.
-    </blockquote>
+## Reference Images & Multi-Angle Pipelines
 
-    <hr>
+### Managing References
+Each entry in the **Reference images** section defines a character, location, or visual style sheet:
+- **Name:** Unique identifier used in scene prompts (e.g., `Maya`, `Harbor town`).
+- **Filename:** An existing image file inside `ComfyUI/input/`, or the target export filename if generating inside the workflow.
+- **Description:** Physical traits, clothing, palette, and lighting. If the filename is left empty in reference-to-video mode, this field serves as the text-to-image generation prompt.
 
-    <h2>🚀 Key Features</h2>
-    <ul>
-        <li><strong>Multi-Engine Video Support:</strong> Choose between MiniMax H3, Wan 2.1, Wan 2.2, LTX 2.3, or LTX 2.5 right from the top of the page. Unused controls automatically hide, and resolutions, FPS, samplers, and defaults update dynamically.</li>
-        <li><strong>Flexible Image Model Selector:</strong> Pair your video engine with Qwen Image 2.1, Flux 2, Z-Image Turbo, or mirror the video model (MiniMax). Automatically configures correct LoRAs, samplers, and nodes for reference images and scene first frames.</li>
-        <li><strong>Long-Film Quality Pipeline:</strong> Combat detail degradation over long chains with optional cleaning steps between scenes: sharpen passes, upscale-model round-trips, and image-model img2img refreshes.</li>
-        <li><strong>Multi-Angle Reference Consistency:</strong> Automatically generate or map multiple character/location angles (front, back, left, right, three-quarter) tied to a master reference image, preventing structural drift across camera cuts.</li>
-        <li><strong>AI Template Integration:</strong> Generate a structural template JSON, feed it along with your script or story to an AI assistant to flesh out a full film production, and upload the completed JSON right back into the tool.</li>
-        <li><strong>Subgraph Packing:</strong> Automatically packs scenes and join nodes into clean subgraphs to maintain high ComfyUI responsiveness even on massive workflows containing dozens of scenes.</li>
-        <li><strong>FFmpeg Assemble & Audio Scripts:</strong> Automatically exports production plans, dialogue sheets, and shell scripts to stitch together rendered scenes, handle audio ducking, loudness normalization, and final master encoding.</li>
-    </ul>
+In reference mode, scenes automatically receive prompt bindings:
+```text
+Reference images: <Picture 1> = Maya; <Picture 2> = Harbor town.
 
-    <hr>
+Multi-Angle Consistency
 
-    <h2>🛠️ Quick Start Guide</h2>
-    <ol>
-        <li>Open <code>minimax_h3_comfyui_local_generator_v2.html</code> in any web browser (rename it to <code>index.html</code> if hosting on GitHub Pages).</li>
-        <li>Set your target resolution, FPS, and default scene duration.</li>
-        <li>Add your scenes and write individual scene prompts, or load them automatically via an AI Template Workflow.</li>
-        <li>Choose your preferred Continuity Mode (Last-frame chain, Keyframes, or Reference-to-video).</li>
-        <li>Click <strong>Generate Workflow</strong>, then <strong>Download Workflow JSON</strong>.</li>
-        <li>Drag and drop the downloaded JSON file into ComfyUI. Place any referenced image files into your <code>ComfyUI/input/</code> directory.</li>
-        <li>Queue the workflow! Scene videos will output to <code>ComfyUI/output/video/</code>.</li>
-    </ol>
+Enable Create several angles of every reference to expand single viewpoint images:
 
-    <hr>
+    Character Types: Front, left, right, back, and three-quarter angles.
 
-    <h2>🔗 Continuity Modes</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>Mode</th>
-                <th>How Scenes Stay Consistent</th>
-                <th>Best Suited For</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td><strong>Last-frame chain</strong></td>
-                <td>The last frame of scene $N$ becomes the first frame of scene $N+1$.</td>
-                <td>Simple, quick sequences; minor error accumulation over long runs.</td>
-            </tr>
-            <tr>
-                <td><strong>First + last keyframes</strong></td>
-                <td>Each scene runs between pre-generated keyframe images re-anchored to references.</td>
-                <td>Clean productions with zero long-term visual drift.</td>
-            </tr>
-            <tr>
-                <td><strong>Reference-to-video mode</strong></td>
-                <td>Reference images are fed directly into every scene as &lt;Picture N&gt; inputs using the <code>ref2va</code> model.</td>
-                <td>MiniMax H3 native multi-reference character consistency.</td>
-            </tr>
-        </tbody>
-    </table>
+    Location Types: Main, left, right, reverse, and high-corner views.
 
-    <hr>
+Angles are generated strictly from the base reference image—never sequentially from subsequent angles—to prevent identity drift.
 
-    <h2>📋 System Requirements</h2>
-    <ul>
-        <li><strong>ComfyUI:</strong> A recent installation supporting subgraphs and required custom nodes:
-            <ul>
-                <li>MiniMax H3 nodes: <code>MiniMaxH3ImageToVideo</code>, <code>MiniMaxH3ReferenceToVideo</code>, <code>SamplerCustomAdvanced</code>, <code>CreateVideo</code>, <code>SaveVideo</code>.</li>
-                <li>Image generation nodes if utilizing Qwen Image 2.1 (<code>TextEncodeQwenImage21</code>, <code>QwenImage21Cache</code>) or Flux/Z-Image templates.</li>
-            </ul>
-        </li>
-        <li><strong>Model Files:</strong> Appropriate H3 model files (first/last-frame model, <code>ref2va</code>), text encoders, video VAEs, and audio VAEs placed in your ComfyUI model directories.</li>
-        <li><strong>FFmpeg & Bash Shell:</strong> Required if running the automated <code>assemble_long_video.sh</code> script (compatible with Linux, macOS, or WSL/Git Bash on Windows).</li>
-    </ul>
+Each scene card includes a Camera view of the subjects setting (Auto, Front, Left side, Right side, Back, Three-quarter). When set to Auto, the generator infers the perspective from descriptive keywords in your scene prompt (e.g., "seen from behind", "walks away", "in profile", "over the shoulder").
+Long-Film Production Workflow
 
-    <hr>
+For extended productions:
 
-    <h2>📦 Project Saving & Updates</h2>
-    <ul>
-        <li><strong>Save/Load Project:</strong> Export your complete production setup (settings, options, scenes, reference sheets, camera views, and dialogues) into a single JSON project file. Browser local backup is also active automatically.</li>
-        <li><strong>Built-in Update Checker:</strong> Automatically checks the GitHub repository for updates upon loading so you're always running the latest workflow template generator.</li>
-    </ul>
+    Draft Pass: Set Render pass to Draft. Scenes render at a fraction of full resolution (default: 50%) with reduced sampling steps and upscaling disabled, providing a fast preview for pacing edits.
 
-    <hr>
+    Selective Rerendering: Enter specific scene numbers in Scenes to render (e.g., 1–4, 9, 14) to iterate only on approved or revised shots.
 
-    <h2>🤝 Contributing & License</h2>
-    <p>Contributions, bug reports, and pull requests are warmly welcomed! When opening an issue, please include your ComfyUI version, active option checkboxes, and any relevant console error logs.</p>
-    <p>Distributed under the MIT License. See <code>LICENSE</code> for more information.</p>
+    Takes & Finals: Switch to Final. Incrementing Take number alters seeds across all scenes without mutating base reference seeds. Use Download all takes to export multiple workflows simultaneously.
 
-</div>
+    Lossless Frame Output (Optional): Enable Save each scene as lossless PNG frames (output/lossless/<scene>/f_#####_.png) for precision post-production grading and frame interpolation.
 
-</body>
-</html>
+    Finishing Script Assembly: Run assemble_long_video.sh via terminal:
+
+        Detects all generated scene takes and clips.
+
+        Cleans duplicate transition frames when using keyframes.
+
+        Normalizes audio loudness across scenes.
+
+        Mixes external voice tracks from dialogue/scene_NN.wav.
+
+        Exports the master edit via high-bitrate H.264, H.265, ProRes, or FFV1.
+
+AI Template Workflow
+
+Accelerate writing long-form video prompts using an external LLM:
+
+    Click Generate Template to export a project JSON structure containing schema instructions and your current settings.
+
+    Provide the JSON file along with your story outline or treatment to an LLM, instructing it to complete the JSON according to the built-in guidelines.
+
+    Save the output and click Upload Filled Template to populate scene blocks, continuity directives, and reference definitions automatically.
+
+    Make any necessary fine-tuning adjustments on the page, then export your final workflow JSON.
+
+Troubleshooting
+
+    Generate Workflow does not respond: Check for modal alerts indicating validation errors (such as missing scene prompts or invalid frame dimensions).
+
+    Red Nodes in ComfyUI: Verify that custom node packages (MiniMax, Qwen Image 2.1) are up to date and that model filenames in the generator match your local file names.
+
+    ComfyUI Stalls on Complex Graphs: Enable Subgraph packing and Skip in-graph join. Render long productions in batches of 15–20 scenes using Scene range.
+
+    Visual Drift Across Consecutive Shots: Enable Multi-angle references, assign explicit Camera view angles rather than Auto, and decrease the re-anchoring interval to 1–2 scenes.
+
+    Image Files Not Found: Ensure referenced assets exist in ComfyUI/input/. Images generated in-graph save to ComfyUI/output/ref/ and must be moved to input/ to be referenced as static files in future runs.
+
+Contributing
+
+Pull requests, node template updates, and issue reports are welcome. When filing an issue, please include your ComfyUI version, active generator options, and relevant console error outputs.
+License
+
+This project is open-source under the MIT License.
