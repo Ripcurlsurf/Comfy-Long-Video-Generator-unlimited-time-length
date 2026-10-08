@@ -51,6 +51,8 @@ This node applies procedural color and tone matching (for generated angle consis
 ### Fallback Node Handling (`Load Image (optional)`)
 Included within `refimagetools.py`. If a designated manual angle file is missing from `ComfyUI/input/`, the node passes the original reference through rather than terminating the queue with a missing-file error.
 
+Note: ripcurlsurf_comfy is a custom node to be placed in the comfy custom node folder
+
 ---
 
 ## Requirements
