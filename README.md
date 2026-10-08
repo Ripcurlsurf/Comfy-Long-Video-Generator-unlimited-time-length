@@ -1,139 +1,260 @@
-I am developing my own script to create very long movies. I have explored Comfy and Pinokio. Both great platforms but they have limitations. Comfy requires extra nodes to achieve difficult task and this consumes resources especially Ram.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiniMax H3 ComfyUI Local Generator - README</title>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --text-color: #c9d1d9;
+            --heading-color: #f0f6fc;
+            --accent-color: #58a6ff;
+            --border-color: #30363d;
+            --code-bg: #161b22;
+            --blockquote-bg: #1f6feb15;
+            --table-alt: #161b22;
+        }
 
-These scripts will do well in Comfy but I will go external and also keep this alive in case comfy improves in their backend
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            margin: 0;
+            padding: 2rem;
+        }
 
-ComfyUI Local Workflow Generator
-Build production-ready, multi-scene ComfyUI workflows for long AI video generation. A standalone, zero-install local HTML generator optimized for MiniMax H3, Wan 2.1/2.2, LTX Video, Qwen Image 2.1, and Flux 2.
+        .markdown-body {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: var(--bg-color);
+            padding: 2rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
 
-Overview
-The MiniMax H3, LTX and Wan - ComfyUI Local Generator is an offline, client-side web application that automates the creation of complex ComfyUI workflow JSON files. It solves the primary bottlenecks in generative AI filmmaking: character drift across scenes, canvas clutter with massive node counts, VRAM limits during long-sequence rendering, and multi-angle asset conditioning.
+        h1, h2, h3 {
+            color: var(--heading-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.3em;
+            margin-top: 24px;
+            margin-bottom: 16px;
+        }
 
-Generate multi-scene sequences, maintain strict character consistency using image conditioning or keyframing, configure audio tracks, and export modular workflow JSON files ready to drag and drop straight into ComfyUI.
+        h1 { font-size: 2em; }
+        h2 { font-size: 1.5em; }
+        h3 { font-size: 1.25em; border-bottom: none; }
 
-Key Features
-🎬 Multi-Model Video Architecture
-Video Engine Selection: Native nodes for MiniMax H3 (MiniMaxH3ImageToVideo, MiniMaxH3ReferenceToVideo), Wan 2.1 / Wan 2.2, and LTX 2.3 / LTX 2.5. UI inputs automatically adapt, showing only valid samplers, steps, resolutions, and parameter fields for the selected engine.
+        p {
+            margin-top: 0;
+            margin-bottom: 16px;
+        }
 
-Resolution Presets: Multiples of 32 tailored for generative diffusion engines: 16:9, 9:16, 1:1, 4:3, 3:4, 21:9 ultrawide, and custom manual pixel controls. Automatic center-cropping and padding prevent image distortion.
+        a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
 
-👤 Identity Preservation & Reference Generation
-Integrated Reference Engines: Generate conditioning visuals directly in-graph using Qwen Image 2.1, Flux 2, Z-Image Turbo, or native MiniMax H3 stills.
+        a:hover {
+            text-decoration: underline;
+        }
 
-ComfyUI Edit Template Compliance: Qwen reference and edit setups feature TextEncodeQwenImage21, QwenImage21Cache, and latent switching via ComfySwitchNode.
+        ul {
+            padding-left: 2rem;
+            margin-top: 0;
+            margin-bottom: 16px;
+        }
 
-Multi-Angle Asset Expansion: Automatically generate Front, Left, Right, Back, and Three-Quarter views from an original subject asset to maintain consistency across changing camera angles.
+        li {
+            margin-bottom: 0.25em;
+        }
 
-Smart Reference Canvas Packing: Overcomes the standard 9-reference limit by auto-stitching supplementary reference images into unified reference sheets.
+        strong {
+            color: var(--heading-color);
+        }
 
-⛓️ Advanced Scene Continuity & Drift Control
-Three Continuity Modes: Seamless last-frame chaining, dual keyframing (first/last frame constraints), and pure <Picture N> reference-to-video mode (ref2va).
+        code {
+            background-color: var(--code-bg);
+            padding: 0.2em 0.4em;
+            border-radius: 6px;
+            font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+            font-size: 85%;
+        }
 
-Long-Film Anti-Drift Refresh: Counter cumulative compression blur on extended runs with automated sharpen passes, upscale round-trips, and periodic img2img re-anchoring.
+        blockquote {
+            margin: 0 0 16px 0;
+            padding: 0.5rem 1rem;
+            color: #8b949e;
+            border-left: 0.25em solid var(--accent-color);
+            background-color: var(--blockquote-bg);
+            border-radius: 0 6px 6px 0;
+        }
 
-Hard Cut Isolation: Toggle hard scene breaks to sever frame carryovers on dramatic scene transitions while preserving project-wide identity anchors.
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 16px;
+            overflow: hidden;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
 
-⚡ Performance & Scalability
-Subgraph Node Packing: Collapses complex per-scene generation logic into single subgraphs, preventing interface lag on multi-dozen scene compositions.
+        th, td {
+            padding: 10px 14px;
+            border: 1px solid var(--border-color);
+            text-align: left;
+        }
 
-Hardware Preset Recommendations: One-click presets optimized for speed, balanced output, or maximum quality based on detected GPU hardware and VRAM.
+        th {
+            background-color: var(--code-bg);
+            color: var(--heading-color);
+        }
 
-Sequence Dependency Locks: Optional hidden link dependencies ensure scenes render sequentially without memory deadlocks.
+        tr:nth-child(even) {
+            background-color: var(--table-alt);
+        }
 
-📦 Long-Form Production Pipeline
-Multi-Take Iteration: Render fast, downscaled draft passes, manage scene seeds, output alternative takes (_t2), and selectively re-render specific scene indices (e.g., 3, 5, 10-14).
+        .badges {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
 
-Lossless Frame Exports: Export individual frames (output/lossless/<scene>/f_#####_.png) for professional post-production.
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1;
+            color: #fff;
+            background-color: #2ea043;
+            border-radius: 6px;
+        }
 
-Audio Stems & Finishing Scripts: Automatically generates a comprehensive assemble_long_video.sh bash script with automated loudness normalization, TTS audio stem replacement, cross-scene stitching, deflickering, and LUT color grading.
+        .badge-blue { background-color: #1f6feb; }
+        .badge-orange { background-color: #bc4c00; }
 
-Supported Engine Matrix
-Model Category	Supported Engines & Frameworks	Primary ComfyUI Nodes
-Video Models	MiniMax H3, Wan 2.1, Wan 2.2, LTX 2.3, LTX 2.5	MiniMaxH3ReferenceToVideo, MiniMaxH3ImageToVideo
-Image / Ref Models	Qwen Image 2.1, Flux 2, Z-Image Turbo, MiniMax H3 Stills	TextEncodeQwenImage21, QwenImage21Cache, LoraLoader
-Audio & Music	ACE-Step, External TTS Audio Pipeline	Custom stem mapping, external audio workflows
-Post-Processing	Integrated Upscalers, FFmpeg Assembly Pipeline	SamplerCustomAdvanced, SaveVideo, ProRes/H.264/H.265
-Continuity Modes Comparison
-[Mode 1: Last-Frame Chain]
-Scene 1 (End Frame) ──────► Scene 2 (First Frame) ──────► Scene 3 (Accumulates Drift)
+        hr {
+            height: 0.25em;
+            padding: 0;
+            margin: 24px 0;
+            background-color: var(--border-color);
+            border: 0;
+        }
+    </style>
+</head>
+<body>
 
-[Mode 2: First + Last Keyframes]
-Keyframe A ──► [ Scene 1 ] ──► Keyframe B ──► [ Scene 2 ] ──► Keyframe C (Drift-Free)
+<div class="markdown-body">
 
-[Mode 3: Reference-to-Video]
-Reference Sheet (<Picture 1...N>) ──┬──► Scene 1 (ref2va)
-                                   ├──► Scene 2 (ref2va)
-                                   └──► Scene 3 (ref2va)
-Last-Frame Chaining: Ideal for continuous, fluid shots. Feeds the final frame of Scene N directly into Scene N+1.
+    <h1>MiniMax H3 ComfyUI Local Generator</h1>
 
-First + Last Keyframes: Eliminates gradual visual degradation across extended sequences by anchoring scene boundaries to predetermined keyframe assets.
+    <div class="badges">
+        <span class="badge badge-blue">Status: Community Project</span>
+        <span class="badge">100% Offline</span>
+        <span class="badge badge-orange">ComfyUI Compatible</span>
+    </div>
 
-Reference-to-Video Mode (ref2va): Injects character identity, locations, and wardrobe sheets across all clips using <Picture N> token associations.
+    <blockquote>
+        <strong>Developer's Note:</strong> I am developing my own script to create very long movies. I explored ComfyUI and Pinokio—both are great platforms, but they have limitations. ComfyUI requires extra nodes to achieve difficult tasks, which heavily consumes resources, especially RAM. These scripts work well within ComfyUI, but I am branching out externally while keeping this project active in case ComfyUI improves its backend.
+    </blockquote>
 
-Quick Start
-Launch the Interface:
-Download and open minimax_h3_comfyui_local_generator_v2.html in any modern web browser (or serve it directly via GitHub Pages by renaming to index.html). No Node.js, Python, or web server required.
+    <p>A powerful, single-file, offline HTML tool that effortlessly builds advanced ComfyUI workflow JSONs for long, multi-scene AI videos using the <strong>MiniMax H3</strong>, <strong>Wan 2.1</strong>, <strong>Wan 2.2</strong>, <strong>LTX 2.3</strong>, and <strong>LTX 2.5</strong> models.</p>
+    
+    <p>Describe your scenes, configure your production settings, and instantly download a complete workflow ready to drag straight into ComfyUI. No installation required, no server to run. Just open the HTML file in any browser, fill out your project, and export.</p>
 
-Configure Engine & Scenes:
+    <blockquote>
+        <strong>Status:</strong> Community project. Not affiliated with MiniMax, Comfy, or Qwen. Generated workflows are built from standard example templates for H3, Wan, LTX, and Qwen Image nodes. <br>
+        <em>Tip:</em> Test with a short 2–3 scene preview run before committing to a heavy, multi-scene render, and verify model filenames against your local ComfyUI installation.
+    </blockquote>
 
-Select your target Video Engine (e.g., MiniMax H3) and Image Model (e.g., Qwen Image 2.1).
+    <hr>
 
-Define your scene descriptions, camera perspectives (Auto, Front, Profile, Reverse), and frame durations.
+    <h2>🚀 Key Features</h2>
+    <ul>
+        <li><strong>Multi-Engine Video Support:</strong> Choose between MiniMax H3, Wan 2.1, Wan 2.2, LTX 2.3, or LTX 2.5 right from the top of the page. Unused controls automatically hide, and resolutions, FPS, samplers, and defaults update dynamically.</li>
+        <li><strong>Flexible Image Model Selector:</strong> Pair your video engine with Qwen Image 2.1, Flux 2, Z-Image Turbo, or mirror the video model (MiniMax). Automatically configures correct LoRAs, samplers, and nodes for reference images and scene first frames.</li>
+        <li><strong>Long-Film Quality Pipeline:</strong> Combat detail degradation over long chains with optional cleaning steps between scenes: sharpen passes, upscale-model round-trips, and image-model img2img refreshes.</li>
+        <li><strong>Multi-Angle Reference Consistency:</strong> Automatically generate or map multiple character/location angles (front, back, left, right, three-quarter) tied to a master reference image, preventing structural drift across camera cuts.</li>
+        <li><strong>AI Template Integration:</strong> Generate a structural template JSON, feed it along with your script or story to an AI assistant to flesh out a full film production, and upload the completed JSON right back into the tool.</li>
+        <li><strong>Subgraph Packing:</strong> Automatically packs scenes and join nodes into clean subgraphs to maintain high ComfyUI responsiveness even on massive workflows containing dozens of scenes.</li>
+        <li><strong>FFmpeg Assemble & Audio Scripts:</strong> Automatically exports production plans, dialogue sheets, and shell scripts to stitch together rendered scenes, handle audio ducking, loudness normalization, and final master encoding.</li>
+    </ul>
 
-Add character/location definitions to the Reference Images panel.
+    <hr>
 
-Export and Queue:
+    <h2>🛠️ Quick Start Guide</h2>
+    <ol>
+        <li>Open <code>minimax_h3_comfyui_local_generator_v2.html</code> in any web browser (rename it to <code>index.html</code> if hosting on GitHub Pages).</li>
+        <li>Set your target resolution, FPS, and default scene duration.</li>
+        <li>Add your scenes and write individual scene prompts, or load them automatically via an AI Template Workflow.</li>
+        <li>Choose your preferred Continuity Mode (Last-frame chain, Keyframes, or Reference-to-video).</li>
+        <li>Click <strong>Generate Workflow</strong>, then <strong>Download Workflow JSON</strong>.</li>
+        <li>Drag and drop the downloaded JSON file into ComfyUI. Place any referenced image files into your <code>ComfyUI/input/</code> directory.</li>
+        <li>Queue the workflow! Scene videos will output to <code>ComfyUI/output/video/</code>.</li>
+    </ol>
 
-Click Generate Workflow, then Download Workflow JSON.
+    <hr>
 
-Drag the exported JSON file directly onto your ComfyUI workspace.
+    <h2>🔗 Continuity Modes</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Mode</th>
+                <th>How Scenes Stay Consistent</th>
+                <th>Best Suited For</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Last-frame chain</strong></td>
+                <td>The last frame of scene $N$ becomes the first frame of scene $N+1$.</td>
+                <td>Simple, quick sequences; minor error accumulation over long runs.</td>
+            </tr>
+            <tr>
+                <td><strong>First + last keyframes</strong></td>
+                <td>Each scene runs between pre-generated keyframe images re-anchored to references.</td>
+                <td>Clean productions with zero long-term visual drift.</td>
+            </tr>
+            <tr>
+                <td><strong>Reference-to-video mode</strong></td>
+                <td>Reference images are fed directly into every scene as &lt;Picture N&gt; inputs using the <code>ref2va</code> model.</td>
+                <td>MiniMax H3 native multi-reference character consistency.</td>
+            </tr>
+        </tbody>
+    </table>
 
-Place any external source assets into your local ComfyUI/input folder and queue the prompt.
+    <hr>
 
-AI Prompt Engineering Template Workflow
-Accelerate long-form screenwriting by letting Large Language Models structure your scenes:
+    <h2>📋 System Requirements</h2>
+    <ul>
+        <li><strong>ComfyUI:</strong> A recent installation supporting subgraphs and required custom nodes:
+            <ul>
+                <li>MiniMax H3 nodes: <code>MiniMaxH3ImageToVideo</code>, <code>MiniMaxH3ReferenceToVideo</code>, <code>SamplerCustomAdvanced</code>, <code>CreateVideo</code>, <code>SaveVideo</code>.</li>
+                <li>Image generation nodes if utilizing Qwen Image 2.1 (<code>TextEncodeQwenImage21</code>, <code>QwenImage21Cache</code>) or Flux/Z-Image templates.</li>
+            </ul>
+        </li>
+        <li><strong>Model Files:</strong> Appropriate H3 model files (first/last-frame model, <code>ref2va</code>), text encoders, video VAEs, and audio VAEs placed in your ComfyUI model directories.</li>
+        <li><strong>FFmpeg & Bash Shell:</strong> Required if running the automated <code>assemble_long_video.sh</code> script (compatible with Linux, macOS, or WSL/Git Bash on Windows).</li>
+    </ul>
 
-Click Generate Template to export a formatted JSON schema containing your generation constraints, references, and scene fields.
+    <hr>
 
-Provide the downloaded JSON to your preferred LLM alongside your script or premise with instructions to complete the scene entries.
+    <h2>📦 Project Saving & Updates</h2>
+    <ul>
+        <li><strong>Save/Load Project:</strong> Export your complete production setup (settings, options, scenes, reference sheets, camera views, and dialogues) into a single JSON project file. Browser local backup is also active automatically.</li>
+        <li><strong>Built-in Update Checker:</strong> Automatically checks the GitHub repository for updates upon loading so you're always running the latest workflow template generator.</li>
+    </ul>
 
-Click Upload Filled Template to load the AI-generated script back into the interface.
+    <hr>
 
-Review prompts, refine camera views, adjust continuity parameters, and export your ready-to-run ComfyUI workflow.
+    <h2>🤝 Contributing & License</h2>
+    <p>Contributions, bug reports, and pull requests are warmly welcomed! When opening an issue, please include your ComfyUI version, active option checkboxes, and any relevant console error logs.</p>
+    <p>Distributed under the MIT License. See <code>LICENSE</code> for more information.</p>
 
-Complete Quality Production Pipeline
-  1. Draft Pass      2. Scene Select     3. Final Takes     4. Audio & Stems     5. Final Assembly
-┌──────────────┐   ┌────────────────┐   ┌──────────────┐   ┌────────────────┐   ┌────────────────┐
-│  50% Scale   │──►│ Pick Approved  │──►│ Render Multi-│──►│ ACE-Step Music │──►│ FFmpeg Finish  │
-│  Fast Steps  │   │  Indices Only  │   │  Takes (_t2) │   │ External Voice │   │  LUTs & Master │
-└──────────────┘   └────────────────┘   └──────────────┘   └────────────────┘   └────────────────┘
-Drafting: Run rapid, low-resolution passes without upscale passes to validate pacing and motion blocking.
+</div>
 
-Filtering: Use the scene index selector (e.g., 1,2,5-8) to render only missing or approved segments.
-
-Takes & Seeds: Maintain base identity via the fixed Project Seed while varying clip seeds using Take Numbers (_t2).
-
-Dialogue & Audio: Export dialogue breakdown sheets (.csv) for TTS generation, generate film scores using the ACE-Step audio workflow, and place spoken lines into dialogue/scene_NN.wav.
-
-Finishing Script: Execute assemble_long_video.sh to assemble video segments, normalize audio mixes, and compile master outputs in ProRes, FFV1, or H.264/H.265.
-
-System Requirements
-ComfyUI Environment: A current build of ComfyUI with Subgraph support enabled.
-
-Custom Nodes: Respective model wrapper nodes (MiniMaxH3ImageToVideo, MiniMaxH3ReferenceToVideo, or equivalent Wan/LTX/Qwen nodes).
-
-Model Checkpoints: Corresponding Diffusion weights, UNETs, Text Encoders, Video VAEs, and Audio VAEs installed in your ComfyUI model directories.
-
-Assembly Tools (Optional): ffmpeg installed within your terminal path (Linux, macOS, or WSL/Git Bash on Windows).
-
-Troubleshooting Guide
-Issue Observed	Root Cause	Resolution
-Workflow generation fails	Incomplete required fields or invalid frame values	Check on-screen alerts; confirm all scenes contain prompts and frame rates are non-zero.
-Nodes highlight red in ComfyUI	Node name mismatch or missing custom node packs	Update your ComfyUI custom node packages and confirm model filenames match your local folder structure.
-ComfyUI UI freezes on load	Extremely high flat-node volume across dozens of scenes	Re-export with Subgraph Packing enabled to group scene logic.
-Drift on side/rear camera angles	Single-angle reference conditioning	Enable Multi-Angle References and set the scene's camera angle explicitly.
-Missing inputs on execution	ComfyUI cannot find specified image filenames	Ensure all referenced reference files reside inside ComfyUI/input/.
-Contributing
-Contributions, bug reports, and node template updates are welcome. When opening an issue, please provide your ComfyUI version, active generation options, and any associated error logs.
-
-License
-Distributed under the MIT License. Ensure compliance with individual model weights and third-party node licenses.
+</body>
+</html>
