@@ -1,6 +1,6 @@
 ComfyUI Local Generator
 
-A single-file, offline HTML tool that generates ComfyUI workflow JSON for long, multi-scene videos using the MiniMax H3 model. Describe your scenes, configure your settings, and download a ready-to-use workflow you can drag directly into ComfyUI.
+A single-file, offline HTML tool that generates ComfyUI workflow JSON for long, multi-scene videos. Describe your scenes, configure your settings, and download a ready-to-use workflow you can drag directly into ComfyUI.
 
 There is nothing to install and no server to run. Simply open the HTML file in any modern web browser, configure your project, and export.
 
