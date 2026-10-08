@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="app-version" content="2026.10.08.19">
+        <meta name="app-version" content="2026.10.08.20">
         <title>Minimax-H3 ComfyUI Local Workflow Generator</title>
         <style>
             * {
@@ -1165,7 +1165,7 @@ three-quarter: three-quarter view from above</textarea>
                         <button id="bDiagDl" type="button">Download
                         report</button><button id="bDiagCp" type="button" class="s">Copy
                         report</button><button id="bDiagMail" type="button">Email to
-                        ripcurlguy@proton.me</button><a id="diagMailA" style="display:none"></a>
+                        ripcurlsurf1@yahoo.com</button><a id="diagMailA" style="display:none"></a>
                     </div>
                     <small style="color:#8a93a0">Nothing is sent from this page. The email button opens your mail
                     program with a short summary and your comment; a web page cannot attach files, so download the
@@ -2314,7 +2314,7 @@ three-quarter: three-quarter view from above</textarea>
              if(n)$("diagDet").open=true;
              $("diagOut").value=diagReport(false);
              const meta=document.querySelector('meta[name="app-version"]');
-             $("diagMailA").href="mailto:ripcurlguy@proton.me?subject="+encodeURIComponent("Video generator report "+(meta?meta.content:"")+(n?" ("+n+" issue(s))":""))+"&body="+encodeURIComponent(diagMailSummary());}
+             $("diagMailA").href="mailto:ripcurlsurf1@yahoo.com?subject="+encodeURIComponent("Video generator report "+(meta?meta.content:"")+(n?" ("+n+" issue(s))":""))+"&body="+encodeURIComponent(diagMailSummary());}
             function refresh(){sync();preview(build());}
             function dl(n,t,m){const u=URL.createObjectURL(new Blob([t],{type:m})),a=document.createElement("a");a.href=u;a.download=n;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);}
             function applyRes(){const r=$("res").value,mm=$("ve").value==="mm";if(mm&&r!=="custom"){const q=r.split("x");$("w").value=q[0];$("h").value=q[1];}
