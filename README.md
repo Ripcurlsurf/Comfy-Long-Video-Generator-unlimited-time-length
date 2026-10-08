@@ -65,6 +65,7 @@ Note: ripcurlsurf_comfy is a custom node to be placed in the comfy custom node f
 - **Video Assembly (Optional):** `ffmpeg` and a Bash environment (Linux, macOS, WSL, or Git Bash for Windows).
 
 > *Note: Default model filenames in the generator can be edited to match your local `ComfyUI/models/` setup.*
+> *Note: if you update the ripcurlsurf_comfy node you have to restart comfy or it will error
 
 ---
 
