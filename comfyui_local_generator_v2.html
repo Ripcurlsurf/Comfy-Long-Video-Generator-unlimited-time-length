@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="app-version" content="2026.10.08.20">
+        <meta name="app-version" content="2026.10.09.1">
         <title>Minimax-H3 ComfyUI Local Workflow Generator</title>
         <style>
             * {
@@ -524,10 +524,18 @@
                             <div>
                                 <label>Which references each scene uses</label>
                                 <select id="rlink">
+                                    <option value="name" selected>
+                                        Automatic: only the references named in that scene
+                                    </option>
+                                    <option value="list">
+                                        I choose for each scene (tick boxes inside every scene)
+                                    </option>
                                     <option value="all">All references in every scene</option>
-                                    <option value="name">Only references named in the scene prompt or dialogue</option>
-                                    <option value="list">Each scene's own list (set inside the scene)</option>
                                 </select>
+                            </div>
+                            <div>
+                                <label>Most references in one scene (0 = no limit; used by Automatic and
+                                All)</label><input id="rmaxs" type="number" min="0" value="3">
                             </div>
                             <div data-eng="mm">
                                 <label>Reference image fit (keeps the aspect ratio, never stretches)</label>
@@ -1752,7 +1760,7 @@ three-quarter: three-quarter view from above</textarea>
             let cnt=0;
             function addScene(p,d,f,s){
              cnt++;const c=document.createElement("div");c.className="sc";
-             c.innerHTML='<b></b><label>Scene prompt</label><textarea class="sp"></textarea><div class="g"><div><label>Duration (s)</label><input class="sd" type="number" step="0.5"></div><div><label>First frame filename (optional)</label><input class="sf"></div><div><label>Seed (empty = inherit)</label><input class="ss" type="number"></div><div><label>Use take in finishing</label><input class="stk" type="number" min="1" placeholder="1"></div><div class="rvw"><label>Camera view of the subjects (picks the matching reference angle)</label><select class="sv"><option value="auto">Auto (read from the prompt)</option><option value="front">Front</option><option value="left">Left side</option><option value="right">Right side</option><option value="back">Back</option><option value="three-quarter">Three-quarter</option></select></div></div><div class="cb"><input type="checkbox" class="sk"><label>Hard cut before this scene (starts a new shot; nothing carries over from the previous scene)</label></div><div class="kx"><div class="g"><div><label>Last frame filename (optional)</label><input class="sl"></div></div><label>Dialogue (one per line, Speaker: line)</label><textarea class="sdl"></textarea><label>Scene sound design (optional)</label><input class="ssn"><div class="rlw"><label>Reference images for this scene (numbers or names, such as 1,3 or Maya)</label><input class="srr"></div></div><div class="fr"></div>';
+             c.innerHTML='<b></b><label>Scene prompt</label><textarea class="sp"></textarea><div class="g"><div><label>Duration (s)</label><input class="sd" type="number" step="0.5"></div><div><label>First frame filename (optional)</label><input class="sf"></div><div><label>Seed (empty = inherit)</label><input class="ss" type="number"></div><div><label>Use take in finishing</label><input class="stk" type="number" min="1" placeholder="1"></div><div class="rvw"><label>Camera view of the subjects (picks the matching reference angle)</label><select class="sv"><option value="auto">Auto (read from the prompt)</option><option value="front">Front</option><option value="left">Left side</option><option value="right">Right side</option><option value="back">Back</option><option value="three-quarter">Three-quarter</option></select></div></div><div class="cb"><input type="checkbox" class="sk"><label>Hard cut before this scene (starts a new shot; nothing carries over from the previous scene)</label></div><div class="kx"><div class="g"><div><label>Last frame filename (optional)</label><input class="sl"></div></div><label>Dialogue (one per line, Speaker: line)</label><textarea class="sdl"></textarea><label>Scene sound design (optional)</label><input class="ssn"><div class="rlw"><label>Pictures used in this scene (tick the ones this scene needs; unticked pictures are not connected to it)</label><div class="rchips" style="display:flex;flex-wrap:wrap;gap:4px 14px"></div><input class="srr" type="hidden"></div></div><div class="rst" style="color:#8a93a0;font-size:12px"></div><div class="fr"></div>';
              c.querySelector(".sp").value=p||"";c.querySelector(".sd").value=d||$("dd").value||15;
              c.querySelector(".sf").value=f||"";c.querySelector(".ss").value=s==null?"":s;
              $("scenes").appendChild(c);renum();
@@ -1996,9 +2004,17 @@ three-quarter: three-quarter view from above</textarea>
               if(!MAN)W.push("Multi-angle references: each reference is generated from its original image in "+Object.keys(VL).length+" possible angles (saved to ComfyUI/output/ref/). A scene links the original plus the angle that matches its camera view, so a back shot gets the back view and a side shot gets the side view. Scene camera view comes from the scene's own setting, or is read from its prompt when set to Auto.");
              }
              const refLog={},vLog={};
-             const pick=s=>{const list=RA.map((r,i)=>({r:r,i:i})).filter(o=>o.r.node||o.r.f),sel=($("rlink").value==="list"?(s.rr||""):"").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);let m;
-              if(sel.length)m=list.filter(o=>sel.includes(String(o.i+1))||(o.r.n&&sel.includes(o.r.n.toLowerCase())));
-              else if($("rlink").value==="name"){const hay=(s.p+" "+s.dl).toLowerCase();m=list.filter(o=>o.r.n&&hay.includes(o.r.n.toLowerCase()));if(!m.length)m=list;}else m=list;
+             const rmissed=new Set();
+             const pick=s=>{const list=RA.map((r,i)=>({r:r,i:i})).filter(o=>o.r.node||o.r.f),mode=$("rlink").value,CAPR=Math.max(0,parseInt($("rmaxs").value,10)||0),sel=(s.rr||"").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);let m;
+              const hay=((s.cp||s.p)+" "+s.dl).toLowerCase(),esc=x=>x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+              const named=o=>{const nm=(o.r.n||"").toLowerCase().trim();if(!nm)return -1;let p=hay.search(new RegExp("(^|[^a-z0-9])"+esc(nm)+"($|[^a-z0-9])"));if(p>=0)return p;
+               const ft=nm.split(/\s+/)[0];if(o.r.t==="character"&&ft.length>=3){p=hay.search(new RegExp("(^|[^a-z0-9])"+esc(ft)+"($|[^a-z0-9])"));}return p;};
+              if(mode==="list")m=list.filter(o=>sel.includes(String(o.i+1))||(o.r.n&&sel.includes(o.r.n.toLowerCase())));
+              else if(mode==="name"){m=list.map(o=>({o:o,p:named(o)})).filter(x=>x.p>=0||sel.includes(String(x.o.i+1))||(x.o.r.n&&sel.includes(x.o.r.n.toLowerCase()))).sort((a,b)=>(a.p<0?-1:a.p)-(b.p<0?-1:b.p)).map(x=>x.o);}
+              else m=list;
+              if(mode!=="list"&&CAPR>0&&m.length>CAPR)m=m.slice(0,CAPR);
+              if(!m.length&&RM&&list.length){m=[list[0]];if(!rmissed.has(s.gi)){rmissed.add(s.gi);W.push("Scene "+(s.gi+1)+" has no pictures selected, but MiniMax reference mode needs at least one, so '"+(list[0].r.n||"reference 1")+"' was used. Name a character or location in that scene, or tick one for it.");}}
+              try{s.el.querySelector(".rst").textContent=RG||RM?("Pictures connected: "+(m.map(o=>o.r.n||("Reference "+(o.i+1))).join(", ")||"none")):"";}catch(e){}
               const lk=m.map(o=>o.i+1).join(",")||"none",ga=refLog[lk]=refLog[lk]||[];if(ga[ga.length-1]!==s.gi+1)ga.push(s.gi+1);
               if(!AV)return m;
               const v=viewOf(s),out=[];let vm=0;
@@ -2315,7 +2331,15 @@ three-quarter: three-quarter view from above</textarea>
              $("diagOut").value=diagReport(false);
              const meta=document.querySelector('meta[name="app-version"]');
              $("diagMailA").href="mailto:ripcurlsurf1@yahoo.com?subject="+encodeURIComponent("Video generator report "+(meta?meta.content:"")+(n?" ("+n+" issue(s))":""))+"&body="+encodeURIComponent(diagMailSummary());}
-            function refresh(){sync();preview(build());}
+            function syncChips(){const R=refsAll(),list=$("rlink").value==="list",sig=R.map(r=>r.n).join("|");
+             document.querySelectorAll(".sc").forEach(c=>{const w=c.querySelector(".rlw"),h=c.querySelector(".srr"),box=c.querySelector(".rchips");if(!w)return;w.classList.toggle("hid",!list||!$("refon").checked||!R.length);
+              if(c.dataset.sig===sig&&c.dataset.rr===h.value)return;c.dataset.sig=sig;c.dataset.rr=h.value;box.textContent="";
+              const sel=h.value.split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
+              R.forEach((r,i)=>{const lab=document.createElement("label");lab.style.cssText="display:inline-flex;gap:5px;align-items:center;margin:0";const cb=document.createElement("input");cb.type="checkbox";cb.style.width="auto";
+               cb.checked=sel.includes(String(i+1))||(r.n&&sel.includes(r.n.toLowerCase()));
+               cb.onchange=()=>{const out=[];box.querySelectorAll("input").forEach((x,k)=>{if(x.checked)out.push(R[k].n||String(k+1));});h.value=out.join(",");c.dataset.rr=h.value;refresh();};
+               lab.appendChild(cb);lab.appendChild(document.createTextNode(r.n||("Reference "+(i+1))));box.appendChild(lab);});});}
+            function refresh(){syncChips();sync();preview(build());}
             function dl(n,t,m){const u=URL.createObjectURL(new Blob([t],{type:m})),a=document.createElement("a");a.href=u;a.download=n;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);}
             function applyRes(){const r=$("res").value,mm=$("ve").value==="mm";if(mm&&r!=="custom"){const q=r.split("x");$("w").value=q[0];$("h").value=q[1];}
              $("wW").classList.toggle("hid",mm&&r!=="custom");$("hW").classList.toggle("hid",mm&&r!=="custom");}
@@ -2420,7 +2444,7 @@ three-quarter: three-quarter view from above</textarea>
             (function(){const fill=(id,src,extra)=>{const t=$(id);t.innerHTML=[...$(src).options].map(o=>"<option value=\""+o.value+"\">"+o.textContent+"</option>").join("")+(extra||"");};
              fill("isamp","smp");fill("isch","sch","<option value=\"flux2\">Flux 2 scheduler (Flux 2 default)</option>");$("isamp").value="euler";$("isch").value="simple";})();
             $("ie").addEventListener("change",()=>{const d=IDEF[$("ie").value];if(d)IDIDS.forEach((id,k)=>{$(id).value=d[k];});refresh();});
-            const TS=[["video_engine","ve"],["render_pass","rpass"],["draft_size_percent","dsc"],["draft_steps","dst"],["scenes_to_render","rl"],["take_number","tk"],["project_seed","pseed"],["takes_to_download","ntk"],["scene_file_codec","icod"],["final_codec","fcod"],["final_crf","fcrf"],["final_preset","fpre"],["lut_file","lutf"],["film_grain","grn"],["loudness_lufs","lufs"],["angle_engine","aeng"],["sharpen_strength","rsa"],["refresh_denoise","rfd"],["continuation_prompt","ctp"],["resolution_preset","res"],["reference_image_fit","rfit"],["reference_image_size","ris"],["upscale_model","upm"],["upscale_native_scale","ups"],["upscale_final_scale","upf"],["width","w"],["height","h"],["fps","fps"],["default_scene_duration_s","dd"],["output_name","fin"],["negative_prompt","neg"],["first_frame_mode","mode"],["image_engine","ie"],["image_loras","ilr"],["image_sampler","isamp"],["qwen_cache_node","qcache"],["image_scheduler","isch"],["first_frame_width","kw"],["first_frame_height","kh"],["max_references_per_first_frame","jmax"],["reanchor_every_n_scenes","jn"],["reference_linking","rlink"],["character_angle_prompts","rav"],["location_angle_prompts","rav2"],["object_angle_prompts","rav3"],["music_checkpoint","mck"],["music_seconds_per_track","mseg"],["music_volume","mvol"],["continuity_strength","jcs"],["photo_finish_color_match","pfc"],["photo_finish_detail","pfd"],["photo_finish_grain","pfg"],["photo_finish_grain_size","pfz"]];
+            const TS=[["video_engine","ve"],["render_pass","rpass"],["draft_size_percent","dsc"],["draft_steps","dst"],["scenes_to_render","rl"],["take_number","tk"],["project_seed","pseed"],["takes_to_download","ntk"],["scene_file_codec","icod"],["final_codec","fcod"],["final_crf","fcrf"],["final_preset","fpre"],["lut_file","lutf"],["film_grain","grn"],["loudness_lufs","lufs"],["angle_engine","aeng"],["sharpen_strength","rsa"],["refresh_denoise","rfd"],["continuation_prompt","ctp"],["resolution_preset","res"],["reference_image_fit","rfit"],["reference_image_size","ris"],["upscale_model","upm"],["upscale_native_scale","ups"],["upscale_final_scale","upf"],["width","w"],["height","h"],["fps","fps"],["default_scene_duration_s","dd"],["output_name","fin"],["negative_prompt","neg"],["first_frame_mode","mode"],["image_engine","ie"],["image_loras","ilr"],["image_sampler","isamp"],["qwen_cache_node","qcache"],["image_scheduler","isch"],["first_frame_width","kw"],["first_frame_height","kh"],["max_references_per_first_frame","jmax"],["reanchor_every_n_scenes","jn"],["reference_linking","rlink"],["max_references_per_scene","rmaxs"],["character_angle_prompts","rav"],["location_angle_prompts","rav2"],["object_angle_prompts","rav3"],["music_checkpoint","mck"],["music_seconds_per_track","mseg"],["music_volume","mvol"],["continuity_strength","jcs"],["photo_finish_color_match","pfc"],["photo_finish_detail","pfd"],["photo_finish_grain","pfg"],["photo_finish_grain_size","pfz"]];
             const TO=[["audio","aud"],["lossless_png_frames","lpng"],["music_in_separate_workflow","musep"],["deflicker","dfl"],["music_ducking","duck"],["reference_mode","rm"],["reference_last_frame_continuity","gc"],["keyframes","kf"],["external_tts","ext"],["skip_in_graph_join","nj"],["multi_angle_references","rang"],["generate_first_frames","jf"],["next_first_frame_as_last_frame","jl"],["music","mu"],["force_scene_order","lk"],["subgraph_packing","sg"],["plan_export","exp"],["upscale","up"],["sharpen_chained_frames","rfs"],["upscale_round_trip_chained_frames","rfu"],["image_model_refresh_chained_frames","rfi"],["first_frame_continuity","jc"],["reference_images_active","refon"],["photo_finish","pfx"]];
             function tplAdv(){const o={};document.querySelectorAll("input[id],select[id],textarea[id]").forEach(e=>{if(e.id==="out"||e.id==="tplFile")return;o[e.id]=e.type==="checkbox"?e.checked:e.value;});return o;}
             function tplGet(){
@@ -2436,7 +2460,7 @@ three-quarter: three-quarter view from above</textarea>
              "dialogue: array of strings formatted 'Speaker: line'. sound: short ambience / foley / music note for the scene. Leave empty if none.",
              "hard_cut: true when the scene starts a new shot or location (matters when options.keyframes is true). first_frame and last_frame: leave empty unless the user supplied image filenames.",
              "options.reference_images_active: set true only when reference_images should be used; false (default) ignores them. reference_images: one entry per character, location or style sheet. name = short label; description = look, outfit and voice (also the image-generation prompt: a reference with an empty filename is generated from its description when options.reference_mode or options.generate_first_frames is true); filename = image name in ComfyUI input to use your own image, empty to generate it. All of them are linked to every scene unless scenes[].references limits them.",
-             "reference_images[].type: character, location or object. It decides which angle prompts are used when options.multi_angle_references is true (front, sides and back for characters; other camera positions for locations). angle_files: leave empty unless the user supplied their own angle images, written as 'front=a.png, back=b.png'. extra_angles: true to create extra angles for this reference, false for a reference that only needs its original image (props, style sheets, background plates).","scenes[].camera_view: front, left, right, back, three-quarter or auto. Set it to match the shot: back when we see a character from behind or the camera looks the opposite way in a location, left or right for profile shots, front for facing the camera. The generator links the reference angle that matches it. Use auto only if unsure.","scenes[].references: leave empty. It is only used when settings.reference_linking is 'list' (each scene's own list of numbers or names such as '1,3'); 'all' links every reference to every scene and 'name' links only references named in the scene.",
+             "reference_images[].type: character, location or object. It decides which angle prompts are used when options.multi_angle_references is true (front, sides and back for characters; other camera positions for locations). angle_files: leave empty unless the user supplied their own angle images, written as 'front=a.png, back=b.png'. extra_angles: true to create extra angles for this reference, false for a reference that only needs its original image (props, style sheets, background plates).","scenes[].camera_view: front, left, right, back, three-quarter or auto. Set it to match the shot: back when we see a character from behind or the camera looks the opposite way in a location, left or right for profile shots, front for facing the camera. The generator links the reference angle that matches it. Use auto only if unsure.","scenes[].references: normally leave empty. settings.reference_linking 'name' (default) connects only the references whose name appears in that scene's prompt or dialogue, at most settings.max_references_per_scene of them; 'list' uses each scene's own list of reference names (such as 'Maya,Kitchen') and nothing else; 'all' connects every reference to every scene. Name the characters and locations that appear in each scene's prompt exactly as in reference_images[].name.",
              "consistency: style_line = one sentence of visual style shared by every scene; character_bible = array of 'Name: look; voice' lines; global_sound = one line of overall sound design.",
              "settings.render_pass: draft (fast, small preview of every scene) or final. scenes_to_render: a list like 3,5,10-14 (empty = all). take_number: 1 for the normal render, higher numbers re-render with new seeds. project_seed keeps reference images identical across passes: do not change it once references look right. scenes[].use_take: which take of that scene the finishing script uses (empty = 1). options.lossless_png_frames saves PNG frames for the finishing script. settings.scene_file_codec is prores, ffv1 or x264; final_codec is h264 or h265; final_crf 12 to 18; lut_file an optional .cube file; film_grain 0 to 20; loudness_lufs about -16. Keep these unless the user asks for a change.","music_prompt: one description of the music for the whole film (genre, mood, instruments, tempo); only used when options.music is true.","settings.video_engine is one of mm (MiniMax H3), wan21, wan22, ltx23, ltx25: keep it unless the user asks for a change. settings, options and advanced: keep the current values unless the user asks for a change. advanced lists every page control by its id."],
              story_brief:"",target_runtime_minutes:null,
@@ -2527,35 +2551,4 @@ three-quarter: three-quarter view from above</textarea>
             $("bSeed").onclick=()=>{$("pseed").value=Math.floor(Math.random()*4294967295);$("qMsg").textContent="New project seed. Reference images, first frames and takes will all change; keep it fixed once you like the references.";refresh();};
             if($("pseed").value==="")$("pseed").value=Math.floor(Math.random()*4294967295);
             const copyOut=()=>{const t=gen();if(!t)return;
-             const fb=()=>{$("out").select();document.execCommand("copy");};
-             if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).catch(fb);else fb();};
-            $("bCopy").onclick=copyOut;$("bCopy2").onclick=copyOut;
-            $("bDl").onclick=()=>{const t=gen();if(!t)return;
-             const u=URL.createObjectURL(new Blob([t],{type:"application/json"})),a=document.createElement("a");
-             a.href=u;a.download=slug()+"_workflow.json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);};
-            ["turbo","lora","vae"].forEach(i=>$(i).addEventListener("change",()=>{autofill();refresh();}));
-            $("scenes").addEventListener("change",()=>{autofill();refresh();});
-            document.querySelector("main").addEventListener("input",refresh);
-            $("dd").addEventListener("change",()=>{});
-            addScene("",6);addRef();autofill();refresh();
-            })();
-
-            try{(function(){const RAW="https://raw.githubusercontent.com/Ripcurlsurf/Comfy-Long-Video-Generator-unlimited-time-length/main/comfyui_local_generator_v2.html";
-             const meta=document.querySelector('meta[name="app-version"]'),cur=meta?meta.content:"0",t=document.getElementById("updTxt"),lk=document.getElementById("updLink"),bar=document.getElementById("updBar"),chk=document.querySelector(".updAuto");
-             const cmp=(a,b)=>{const x=String(a).split(".").map(Number),y=String(b).split(".").map(Number);for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0);if(d)return d>0?1:-1;}return 0;};
-             let pref=true;try{pref=localStorage.getItem("h3NoUpdateCheck")!=="1";}catch(e){}
-             chk.checked=pref;chk.onchange=()=>{try{localStorage.setItem("h3NoUpdateCheck",chk.checked?"0":"1");}catch(e){}};
-             t.textContent="Version "+cur;
-             const check=async manual=>{t.textContent="Version "+cur+" - checking for updates...";lk.classList.add("hid");bar.classList.remove("new");
-              try{const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),8000),r=await fetch(RAW,{cache:"no-store",signal:ctl.signal});clearTimeout(to);if(!r.ok)throw new Error("HTTP "+r.status);
-               const txt=await r.text(),m=txt.match(/<meta name="app-version" content="([^"]+)"/);
-               if(!m){t.textContent="Version "+cur+" - the GitHub copy has no version marker yet (publish this version there to enable update checks).";return;}
-               const c=cmp(m[1],cur);
-               if(c>0){t.textContent="A newer version is available: "+m[1]+" (you have "+cur+").";lk.classList.remove("hid");bar.classList.add("new");}
-               else t.textContent="Version "+cur+" - up to date"+(c<0?" (this copy is newer than the one on GitHub)":"")+".";
-              }catch(e){t.textContent="Version "+cur+(manual?" - could not reach GitHub ("+e.message+"). The generator works fine offline.":"");}};
-             document.getElementById("updBtn").onclick=()=>check(true);
-             if(pref)check(false);})();}catch(err){}
-        </script>
-    </body>
-</html>
+             const f
