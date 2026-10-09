@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="app-version" content="2026.10.09.1">
+        <meta name="app-version" content="2026.10.09.2">
         <title>Minimax-H3 ComfyUI Local Workflow Generator</title>
         <style>
             * {
@@ -720,8 +720,9 @@ three-quarter: three-quarter view from above</textarea>
                                 changes)</label><input id="sgs" type="number" min="1" max="10" value="5">
                             </div>
                             <div>
-                                <label>Colour drift limit (0 to 1; stops on slow changes of place; 0 =
-                                off)</label><input id="sgd" type="number" step="0.05" min="0" max="1" value="0.5">
+                                <label>Colour drift limit (0 = off, recommended; low values can cut clips with big
+                                camera
+                                moves)</label><input id="sgd" type="number" step="0.05" min="0" max="1" value="0">
                             </div>
                             <div>
                                 <label>Keep at least
@@ -1573,8 +1574,8 @@ three-quarter: three-quarter view from above</textarea>
                             "label": ("STRING", {"default": "Scene"}),
                             "sensitivity": ("INT", {"default": 5, "min": 1, "max": 10, "step": 1,
                                                     "tooltip": "Higher catches smaller scene changes (and may flag fast action). 5 is a good start."}),
-                            "drift_limit": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05,
-                                                      "tooltip": "Also stop when the colours of the picture have moved this far from the opening frames (dissolves, slow changes of place). 0 = off."}),
+                            "drift_limit": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
+                                                      "tooltip": "Also stop when the colours of the picture have moved this far from the opening frames (dissolves, slow changes of place). 0 = off (recommended; the default). Values below about 0.6 can cut clips with large camera moves."}),
                             "min_keep_seconds": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 30.0, "step": 0.1}),
                             "after_cut": (["trim", "hold_last_frame"],),
                             "write_log": ("BOOLEAN", {"default": True}),
@@ -1820,6 +1821,7 @@ three-quarter: three-quarter view from above</textarea>
               x.push("The place, time of day and lighting stay the same from the first frame to the last");
               if(s.part>0)x.push("This continues the same shot from the opening frame: carry on with the next moment of the action without restarting or repeating what already happened");
               x.push("One single unbroken take from one camera setup. Only the action described above happens, in the order described, from the first frame to the last");
+              if(s.d>0)x.push("Unhurried, even pace: the described action takes the whole "+(Math.round(s.d*10)/10)+" seconds and its final moment happens at the very end of the clip, with no waiting, freezing or repeating before then");
               if(s.sn)x.push("Scene sound: "+s.sn);
               if(aud){if(ext)x.push("No spoken dialogue, no speech; "+(MU?"ambience and effects only, no music":"ambience, effects and music only"));else s.dl.split("\n").map(l=>l.trim()).filter(Boolean).forEach(l=>x.push("Spoken line, "+l));}
               if(aud&&MU&&!ext)x.push("No background music; ambience and effects only");
@@ -2551,4 +2553,35 @@ three-quarter: three-quarter view from above</textarea>
             $("bSeed").onclick=()=>{$("pseed").value=Math.floor(Math.random()*4294967295);$("qMsg").textContent="New project seed. Reference images, first frames and takes will all change; keep it fixed once you like the references.";refresh();};
             if($("pseed").value==="")$("pseed").value=Math.floor(Math.random()*4294967295);
             const copyOut=()=>{const t=gen();if(!t)return;
-             const f
+             const fb=()=>{$("out").select();document.execCommand("copy");};
+             if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).catch(fb);else fb();};
+            $("bCopy").onclick=copyOut;$("bCopy2").onclick=copyOut;
+            $("bDl").onclick=()=>{const t=gen();if(!t)return;
+             const u=URL.createObjectURL(new Blob([t],{type:"application/json"})),a=document.createElement("a");
+             a.href=u;a.download=slug()+"_workflow.json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);};
+            ["turbo","lora","vae"].forEach(i=>$(i).addEventListener("change",()=>{autofill();refresh();}));
+            $("scenes").addEventListener("change",()=>{autofill();refresh();});
+            document.querySelector("main").addEventListener("input",refresh);
+            $("dd").addEventListener("change",()=>{});
+            addScene("",6);addRef();autofill();refresh();
+            })();
+
+            try{(function(){const RAW="https://raw.githubusercontent.com/Ripcurlsurf/Comfy-Long-Video-Generator-unlimited-time-length/main/comfyui_local_generator_v2.html";
+             const meta=document.querySelector('meta[name="app-version"]'),cur=meta?meta.content:"0",t=document.getElementById("updTxt"),lk=document.getElementById("updLink"),bar=document.getElementById("updBar"),chk=document.querySelector(".updAuto");
+             const cmp=(a,b)=>{const x=String(a).split(".").map(Number),y=String(b).split(".").map(Number);for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0);if(d)return d>0?1:-1;}return 0;};
+             let pref=true;try{pref=localStorage.getItem("h3NoUpdateCheck")!=="1";}catch(e){}
+             chk.checked=pref;chk.onchange=()=>{try{localStorage.setItem("h3NoUpdateCheck",chk.checked?"0":"1");}catch(e){}};
+             t.textContent="Version "+cur;
+             const check=async manual=>{t.textContent="Version "+cur+" - checking for updates...";lk.classList.add("hid");bar.classList.remove("new");
+              try{const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),8000),r=await fetch(RAW,{cache:"no-store",signal:ctl.signal});clearTimeout(to);if(!r.ok)throw new Error("HTTP "+r.status);
+               const txt=await r.text(),m=txt.match(/<meta name="app-version" content="([^"]+)"/);
+               if(!m){t.textContent="Version "+cur+" - the GitHub copy has no version marker yet (publish this version there to enable update checks).";return;}
+               const c=cmp(m[1],cur);
+               if(c>0){t.textContent="A newer version is available: "+m[1]+" (you have "+cur+").";lk.classList.remove("hid");bar.classList.add("new");}
+               else t.textContent="Version "+cur+" - up to date"+(c<0?" (this copy is newer than the one on GitHub)":"")+".";
+              }catch(e){t.textContent="Version "+cur+(manual?" - could not reach GitHub ("+e.message+"). The generator works fine offline.":"");}};
+             document.getElementById("updBtn").onclick=()=>check(true);
+             if(pref)check(false);})();}catch(err){}
+        </script>
+    </body>
+</html>
