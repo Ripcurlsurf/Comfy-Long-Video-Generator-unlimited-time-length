@@ -1,4 +1,4 @@
-# MiniMax H3 ComfyUI Local Generator: Long Multi-Scene Video Workflow Builder
+# ComfyUI Local Generator: Long Multi-Scene Video Workflow Builder
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: ComfyUI](https://img.shields.io/badge/ComfyUI-Workflow%20Generator-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
