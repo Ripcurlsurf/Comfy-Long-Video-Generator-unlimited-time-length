@@ -20,8 +20,8 @@ model not to do this. This node checks the finished frames and enforces what it 
   5. REPORT         - one line per scene (also appended to ComfyUI/output/scene_guard_log.txt)
                       with the planned and real frame counts and every problem found.
 
-It cannot see identity: a person whose face slowly changes inside one shot, or an action
-repeated from a different camera angle, is not detected. It is plain numpy image
+Identity is only checked roughly (skin colour against the connected reference): an action
+repeated from a different camera angle, or a face whose shape changes, is not detected. It is plain numpy image
 statistics (no model, no extra installs).
 """
 import os
@@ -32,6 +32,9 @@ import torch
 
 _GRID = 32
 KINDS_CUT = ("hard cut", "gradual change to a different scene")
+# Only these are cut off when trim_on asks for it. Drift is reported and used to rank tries,
+# but never trims a clip: cutting at the worst-drift frame removed good footage.
+KINDS_TRIM = ("frozen ending", "replayed action")
 
 
 def _features(frames):
@@ -86,13 +89,14 @@ def drift_to_reference(frames, ref_frames, fps):
     base = sig[: max(1, min(sig.shape[0], int(round(fps))))].mean(axis=0)
     refv = ref.mean(axis=0) if ref is not None and ref.size else base
 
-    def _d(a, b):
-        return (0.5 * np.abs(a[0:3] - b[0:3]).mean()
-                + 0.5 * np.abs(a[3:6] - b[3:6]).mean()
-                + 0.15 * abs(a[6] - b[6])
-                + 0.05 * abs(a[7] - b[7]))
+    def _d(a, b, skin):
+        d = 0.15 * abs(a[6] - b[6]) + 0.05 * abs(a[7] - b[7])
+        if skin:  # compare skin colour only when both pictures actually show skin
+            d += 0.5 * np.abs(a[0:3] - b[0:3]).mean() + 0.5 * np.abs(a[3:6] - b[3:6]).mean()
+        return d
 
-    per = np.array([_d(sig[i], refv) for i in range(sig.shape[0])], dtype=np.float32)
+    rs = refv[6] > 0.002
+    per = np.array([_d(sig[i], refv, rs and sig[i, 6] > 0.002) for i in range(sig.shape[0])], dtype=np.float32)
     k = max(1, int(round(fps * 0.5)))
     score = float(per[k:].max()) if per.shape[0] > k else float(per.max())
     return score, per
@@ -239,14 +243,14 @@ def _choose_range(r, fps, min_keep_seconds, trim_extra):
     """Frame range [a,b) to keep for one analysed clip: the longest single shot,
     then (when asked) cut off a frozen ending or replay at the end of it."""
     n = r["n"]
-    use = [e for e in r["events"] if e[1] in KINDS_CUT or trim_extra]
+    use = [e for e in r["events"] if e[1] in KINDS_CUT or (trim_extra and e[1] in KINDS_TRIM)]
     if not use:
         return 0, n, False
     segs = _segments(r, trim_extra)
     a, b = max(segs, key=lambda s: (s[1] - s[0], -s[0]))
     if trim_extra:
         for i, k in r["events"]:
-            if k not in KINDS_CUT and a < i < b:
+            if k in KINDS_TRIM and a < i < b:
                 b = i
                 break
     return a, b, a != 0
@@ -311,7 +315,7 @@ class SceneGuard:
                 "images_b": ("IMAGE",), "audio_b": ("AUDIO",),
                 "images_c": ("IMAGE",), "audio_c": ("AUDIO",),
                 "images_d": ("IMAGE",), "audio_d": ("AUDIO",),
-                "reference": ("IMAGE", {"tooltip": "Canonical character/location reference. Each try is scored for drift; the least-drifted try wins."}),
+                "reference": ("IMAGE", {"tooltip": "The scene's first frame (or a canonical reference). Each try is scored for drift from it; the least-drifted try wins."}),
             },
         }
 
@@ -407,7 +411,7 @@ class SceneGuard:
         if fb:
             parts.append("the longest single shot was kept")
         parts += notes
-        acted = any((k in KINDS_CUT or trim_extra) for _, k in r["events"])
+        acted = any((k in KINDS_CUT or (trim_extra and k in KINDS_TRIM)) for _, k in r["events"])
         status = "OK" if not r["events"] else ("FIXED" if acted else "CHECK")
         report = "%s: %s | planned %s frames, got %d, output %d (%.2f s)%s" % (
             label, status, P if P else "-", n, out_n, out_n / fps, (" | " + " | ".join(parts)) if parts else "")

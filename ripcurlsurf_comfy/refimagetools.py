@@ -2,13 +2,15 @@
 refimagetools.py - ComfyUI custom nodes for reference pictures (package: ripcurlsurf_comfy).
 
 Put the whole folder  ripcurlsurf_comfy  (this file plus __init__.py) in  ComfyUI/custom_nodes/  and restart ComfyUI.
-It adds two nodes (category: image/reference):
+It adds three nodes (category: image/reference):
 
 A) Reference Photo Finish (remove painted look)   - see below
 B) Load Image (optional, falls back to original)  - loads a picture from ComfyUI/input by
    file name; if the file is not there yet it passes the FALLBACK image through instead of
    stopping the whole workflow. Used for manual angle pictures: add the files whenever you
    have them, until then the original reference stands in.
+C) Scene Anchor (identity-locked continuity)    - colour-matches a chained frame back to a
+   clean anchor frame so colour, skin tone and light do not creep from scene to scene.
 
 A) Reference Photo Finish
 
@@ -359,7 +361,8 @@ class SceneAnchor:
 
                 if identity_strength > 0:
                     if user_mask is not None:
-                        m = self._resize_to(user_mask[..., None], h, w)[..., 0]
+                        um = user_mask if user_mask.ndim == 2 else user_mask[min(i, user_mask.shape[0] - 1)]
+                        m = self._resize_to(um[..., None], h, w)[..., 0]
                     else:
                         m = self._skin_mask(ref0)
                         m = _blur(m[..., None], max(2.0, min(h, w) / 128.0))[..., 0]
