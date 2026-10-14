@@ -3,8 +3,8 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="app-version" content="2026.10.13.3">
-        <title>ComfyUI Local Long Movie Workflow Generator</title>
+        <meta name="app-version" content="2026.10.14.5">
+        <title>Minimax-H3 ComfyUI Local Workflow Generator</title>
         <style>
             * {
                 box-sizing: border-box;
@@ -312,6 +312,18 @@
                 color: #fff
             }
 
+            .q.qred {
+                border-color: #e05252;
+                background: #e05252;
+                color: #fff
+            }
+
+            .q.qred:hover,.q.qred:focus {
+                border-color: #ff8080;
+                background: #ff6b6b;
+                color: #fff
+            }
+
             .sp.hl {
                 outline: 2px solid #e05252;
                 outline-offset: 1px
@@ -603,7 +615,7 @@
                     <h2>Scenes</h2>
                     <div id="scenes"></div>
                     <label>Negative prompt (all scenes)</label>
-                    <textarea id="neg">low quality, blurry, distorted faces, extra limbs, watermark, text, flickering, jitter, bad anatomy, oversaturated, noisy, artifacts, duplicate person, cloned face, twins</textarea>
+                    <textarea id="neg">low quality, blurry, distorted faces, extra limbs, watermark, text, flickering, jitter, bad anatomy, oversaturated, noisy, artifacts</textarea>
                 </section>
                 <section>
                     <h2>Reference images</h2>
@@ -760,7 +772,8 @@ three-quarter: three-quarter view from above</textarea>
                     </div>
                     <div class="cb">
                         <input type="checkbox" id="jf"><label for="jf">Generate scene first frames with the image engine
-                        above; scenes between anchors chain from the previous scene's last frame</label>
+                        above; scenes between anchors chain from the previous scene's last
+                        frame</label><span class="q qred hid" id="jfLock" tabindex="0" data-tip="Locked on because Reference images is on: generated first frames are the only way the reference pictures reach the video model. To switch first frames off, untick Reference images first.">?</span>
                     </div>
                     <div class="cb">
                         <input type="checkbox" id="jc"><label for="jc">Continuity for soft scene changes: build each
@@ -1092,9 +1105,9 @@ three-quarter: three-quarter view from above</textarea>
                             <input type="checkbox" id="sage" checked><label for="sage">Sage Attention (needs KJNodes +
                             sageattention installed)</label>
                         </div>
-                        <div class="cb">
-                            <input type="checkbox" id="sv" checked><label for="sv">Save individual scene MP4s (previews
-                            only, never the final result)</label>
+                        <div class="cb" style="display:none">
+                            <input type="checkbox" id="sv" checked disabled><label for="sv">Save individual scene MP4s
+                            (always on)</label>
                         </div>
                     </div>
                 </section>
@@ -1127,11 +1140,10 @@ three-quarter: three-quarter view from above</textarea>
                     <h2>Long-film quality (stops detail loss between scenes)</h2>
                     <div class="cb">
                         <input type="checkbox" id="anc" checked><label for="anc"><b>Re-anchor every chained frame to the
-                        reference images (identity-locked continuity)</b> &mdash; before the previous scene's last frame
-                        becomes the next scene's first frame, its colours and skin tones are pulled back to the last
-                        clean first frame (the one made from your references at the last re-anchor or hard cut). Stops
-                        colour, skin tone and light creeping scene by scene. Uses the Scene Anchor node from the
-                        ripcurlsurf_comfy custom nodes. Recommended on for long films</label>
+                        reference images (identity-locked continuity)</b> &mdash; pulls the previous scene's last frame
+                        back toward the character and location references before it becomes the next scene's first
+                        frame. Stops faces, wardrobe and location drifting scene by scene. Uses the Scene Anchor node
+                        from the ripcurlsurf_comfy custom nodes. Recommended on for long films</label>
                     </div>
                     <div id="ancBox">
                         <div class="g">
@@ -1141,12 +1153,11 @@ three-quarter: three-quarter view from above</textarea>
                             </div>
                             <div>
                                 <label>Identity pull-back (0-1, higher snaps faces back
-                                harder)</label><input id="anci" type="number" step="0.05" min="0" max="1" value="0.20">
+                                harder)</label><input id="anci" type="number" step="0.05" min="0" max="1" value="0.40">
                             </div>
                             <div>
-                                <label>Structure pull-back (0-0.6; keep 0 unless the camera barely moves, it can ghost
-                                the earlier
-                                picture)</label><input id="ancs" type="number" step="0.05" min="0" max="0.6" value="0">
+                                <label>Structure pull-back (0-0.6, low-frequency
+                                only)</label><input id="ancs" type="number" step="0.05" min="0" max="0.6" value="0.15">
                             </div>
                         </div>
                     </div>
@@ -1284,10 +1295,7 @@ three-quarter: three-quarter view from above</textarea>
                         <button id="bTk" class="s">Download all takes</button><button id="bFin" class="s">Download
                         finishing script</button><button id="bAud" class="s">Download audio workflow
                         (music)</button><button id="bDS" class="s">Download dialogue sheet
-                        (CSV)</button><button id="bSeed" class="s">New project
-                        seed</button><button id="bFlag" class="s" title="Reads ComfyUI/output/scene_guard_log.txt and sets Scenes to render, a new Take and each flagged scene's Use take, so only the bad scenes are rendered again">Re-render
-                        flagged scenes (load
-                        scene_guard_log.txt)</button><input type="file" id="flagFile" accept=".txt,.log,text/plain" style="display:none">
+                        (CSV)</button><button id="bSeed" class="s">New project seed</button>
                     </div>
                     <div id="qMsg" style="font-size:12px;margin-top:4px"></div>
                 </section>
@@ -1365,15 +1373,13 @@ three-quarter: three-quarter view from above</textarea>
             refimagetools.py - ComfyUI custom nodes for reference pictures (package: ripcurlsurf_comfy).
 
             Put the whole folder  ripcurlsurf_comfy  (this file plus __init__.py) in  ComfyUI/custom_nodes/  and restart ComfyUI.
-            It adds three nodes (category: image/reference):
+            It adds two nodes (category: image/reference):
 
             A) Reference Photo Finish (remove painted look)   - see below
             B) Load Image (optional, falls back to original)  - loads a picture from ComfyUI/input by
                file name; if the file is not there yet it passes the FALLBACK image through instead of
                stopping the whole workflow. Used for manual angle pictures: add the files whenever you
                have them, until then the original reference stands in.
-            C) Scene Anchor (identity-locked continuity)    - colour-matches a chained frame back to a
-               clean anchor frame so colour, skin tone and light do not creep from scene to scene.
 
             A) Reference Photo Finish
 
@@ -1724,8 +1730,7 @@ three-quarter: three-quarter view from above</textarea>
 
                             if identity_strength > 0:
                                 if user_mask is not None:
-                                    um = user_mask if user_mask.ndim == 2 else user_mask[min(i, user_mask.shape[0] - 1)]
-                                    m = self._resize_to(um[..., None], h, w)[..., 0]
+                                    m = self._resize_to(user_mask[..., None], h, w)[..., 0]
                                 else:
                                     m = self._skin_mask(ref0)
                                     m = _blur(m[..., None], max(2.0, min(h, w) / 128.0))[..., 0]
@@ -1758,7 +1763,6 @@ three-quarter: three-quarter view from above</textarea>
                     return (torch.from_numpy(np.stack(outs, axis=0).astype(np.float32)),)
 
 
-            # Node lists go last: every class above must already exist when Python reaches this.
             NODE_CLASS_MAPPINGS = {
                 "RefPhotoFinish": RefPhotoFinish,
                 "RefLoadImageOptional": RefLoadImageOptional,
@@ -1793,8 +1797,8 @@ three-quarter: three-quarter view from above</textarea>
               5. REPORT         - one line per scene (also appended to ComfyUI/output/scene_guard_log.txt)
                                   with the planned and real frame counts and every problem found.
 
-            Identity is only checked roughly (skin colour against the connected reference): an action
-            repeated from a different camera angle, or a face whose shape changes, is not detected. It is plain numpy image
+            It cannot see identity: a person whose face slowly changes inside one shot, or an action
+            repeated from a different camera angle, is not detected. It is plain numpy image
             statistics (no model, no extra installs).
             """
             import os
@@ -1805,9 +1809,6 @@ three-quarter: three-quarter view from above</textarea>
 
             _GRID = 32
             KINDS_CUT = ("hard cut", "gradual change to a different scene")
-            # Only these are cut off when trim_on asks for it. Drift is reported and used to rank tries,
-            # but never trims a clip: cutting at the worst-drift frame removed good footage.
-            KINDS_TRIM = ("frozen ending", "replayed action")
 
 
             def _features(frames):
@@ -1862,14 +1863,13 @@ three-quarter: three-quarter view from above</textarea>
                 base = sig[: max(1, min(sig.shape[0], int(round(fps))))].mean(axis=0)
                 refv = ref.mean(axis=0) if ref is not None and ref.size else base
 
-                def _d(a, b, skin):
-                    d = 0.15 * abs(a[6] - b[6]) + 0.05 * abs(a[7] - b[7])
-                    if skin:  # compare skin colour only when both pictures actually show skin
-                        d += 0.5 * np.abs(a[0:3] - b[0:3]).mean() + 0.5 * np.abs(a[3:6] - b[3:6]).mean()
-                    return d
+                def _d(a, b):
+                    return (0.5 * np.abs(a[0:3] - b[0:3]).mean()
+                            + 0.5 * np.abs(a[3:6] - b[3:6]).mean()
+                            + 0.15 * abs(a[6] - b[6])
+                            + 0.05 * abs(a[7] - b[7]))
 
-                rs = refv[6] > 0.002
-                per = np.array([_d(sig[i], refv, rs and sig[i, 6] > 0.002) for i in range(sig.shape[0])], dtype=np.float32)
+                per = np.array([_d(sig[i], refv) for i in range(sig.shape[0])], dtype=np.float32)
                 k = max(1, int(round(fps * 0.5)))
                 score = float(per[k:].max()) if per.shape[0] > k else float(per.max())
                 return score, per
@@ -2016,14 +2016,14 @@ three-quarter: three-quarter view from above</textarea>
                 """Frame range [a,b) to keep for one analysed clip: the longest single shot,
                 then (when asked) cut off a frozen ending or replay at the end of it."""
                 n = r["n"]
-                use = [e for e in r["events"] if e[1] in KINDS_CUT or (trim_extra and e[1] in KINDS_TRIM)]
+                use = [e for e in r["events"] if e[1] in KINDS_CUT or trim_extra]
                 if not use:
                     return 0, n, False
                 segs = _segments(r, trim_extra)
                 a, b = max(segs, key=lambda s: (s[1] - s[0], -s[0]))
                 if trim_extra:
                     for i, k in r["events"]:
-                        if k in KINDS_TRIM and a < i < b:
+                        if k not in KINDS_CUT and a < i < b:
                             b = i
                             break
                 return a, b, a != 0
@@ -2088,7 +2088,7 @@ three-quarter: three-quarter view from above</textarea>
                             "images_b": ("IMAGE",), "audio_b": ("AUDIO",),
                             "images_c": ("IMAGE",), "audio_c": ("AUDIO",),
                             "images_d": ("IMAGE",), "audio_d": ("AUDIO",),
-                            "reference": ("IMAGE", {"tooltip": "The scene's first frame (or a canonical reference). Each try is scored for drift from it; the least-drifted try wins."}),
+                            "reference": ("IMAGE", {"tooltip": "Canonical character/location reference. Each try is scored for drift; the least-drifted try wins."}),
                         },
                     }
 
@@ -2184,7 +2184,7 @@ three-quarter: three-quarter view from above</textarea>
                     if fb:
                         parts.append("the longest single shot was kept")
                     parts += notes
-                    acted = any((k in KINDS_CUT or (trim_extra and k in KINDS_TRIM)) for _, k in r["events"])
+                    acted = any((k in KINDS_CUT or trim_extra) for _, k in r["events"])
                     status = "OK" if not r["events"] else ("FIXED" if acted else "CHECK")
                     report = "%s: %s | planned %s frames, got %d, output %d (%.2f s)%s" % (
                         label, status, P if P else "-", n, out_n, out_n / fps, (" | " + " | ".join(parts)) if parts else "")
@@ -2216,8 +2216,7 @@ three-quarter: three-quarter view from above</textarea>
             Nodes:
               Reference Photo Finish (remove painted look)            image/reference
               Load Image (optional, falls back to original)           image/reference
-              Scene Anchor (identity-locked continuity)               image/reference
-              Scene Guard (exact length, cuts, best of N tries)       video/ripcurlsurf
+              Scene Guard (cut off mid-clip scene changes)            video/ripcurlsurf
             """
             import importlib
             import traceback
@@ -2343,7 +2342,7 @@ three-quarter: three-quarter view from above</textarea>
             let cnt=0;
             function addScene(p,d,f,s){
              cnt++;const c=document.createElement("div");c.className="sc";
-             c.innerHTML='<b></b><label>Scene prompt<span class="q qfix hid" data-tip="">?</span></label><textarea class="sp"></textarea><label>On screen at the start (one line per visible person, Name: what they wear now, where they are, posture, what they hold. Nobody else appears)</label><textarea class="son" style="min-height:40px" placeholder="Maya: green raincoat open, hood down, hair wet; standing by the door, left of frame, holding a torch"></textarea><div class="g"><div><label>Duration (s)<span class="q warnq hid" data-tip="Scenes longer than 15 seconds may cause irregularities: the video model can cut to another shot, repeat the action or freeze. Split the scene into more sentences (about one per 5 seconds) or into several scenes.">?</span></label><input class="sd" type="number" step="0.5"></div><div><label>First frame filename (optional)</label><input class="sf"></div><div><label>Seed (empty = inherit)</label><input class="ss" type="number"></div><div><label>Use take in finishing</label><input class="stk" type="number" min="1" placeholder="1"></div><div class="rvw"><label>Camera view of the subjects (picks the matching baked shot when the scene has none chosen)</label><select class="sv"><option value="auto">Auto (read from the prompt)</option><option value="front">Front</option><option value="left">Left side</option><option value="right">Right side</option><option value="back">Back</option><option value="three-quarter">Three-quarter</option></select></div><div class="rsw"><label>Baked shot to use (id from a reference that has "Bake a set of shots" on)</label><select class="sbs"><option value="">None: use the angle from the camera view above</option></select></div></div><div class="g"><div style="grid-column:1/-1"><label>Scene change before this scene</label><select class="ssc"><option value="">Default (set under Consistency)</option><option value="soft">Soft: same moment, people and objects stay where the previous scene left them</option><option value="hard">Hard: a whole new scene, nothing carries over</option></select></div><div style="grid-column:1/-1"><label>Long scene</label><select class="slm"><option value="">Default (Auto-split setting under Video and sampling)</option><option value="split">Split into one clip per sentence</option><option value="one">One clip for the whole scene (whole prompt at once)</option><option value="allone">One clip for the whole scene, in ALL scenes</option></select></div></div><div class="kx"><div class="g"><div><label>Last frame filename (optional)</label><input class="sl"></div></div><label>Dialogue (one per line, Speaker: line)</label><textarea class="sdl"></textarea><label>Scene sound design (optional)</label><input class="ssn"><div class="rlw"><label>Pictures used in this scene (tick the ones this scene needs; unticked pictures are not connected to it)</label><div class="rchips" style="display:flex;flex-wrap:wrap;gap:4px 14px"></div><input class="srr" type="hidden"></div></div><div class="rst" style="color:#8a93a0;font-size:12px"></div><div class="fr"></div>';
+             c.innerHTML='<b></b><label>Scene prompt<span class="q qfix hid" data-tip="">?</span></label><textarea class="sp"></textarea><div class="g"><div><label>Duration (s)<span class="q warnq hid" data-tip="Scenes longer than 15 seconds may cause irregularities: the video model can cut to another shot, repeat the action or freeze. Split the scene into more sentences (about one per 5 seconds) or into several scenes.">?</span></label><input class="sd" type="number" step="0.5"></div><div><label>First frame filename (optional)</label><input class="sf"></div><div><label>Seed (empty = inherit)</label><input class="ss" type="number"></div><div><label>Use take in finishing</label><input class="stk" type="number" min="1" placeholder="1"></div><div class="rvw"><label>Camera view of the subjects (picks the matching baked shot when the scene has none chosen)</label><select class="sv"><option value="auto">Auto (read from the prompt)</option><option value="front">Front</option><option value="left">Left side</option><option value="right">Right side</option><option value="back">Back</option><option value="three-quarter">Three-quarter</option></select></div><div class="rsw"><label>Baked shot to use (id from a reference that has "Bake a set of shots" on)</label><select class="sbs"><option value="">None: use the angle from the camera view above</option></select></div></div><div class="g"><div style="grid-column:1/-1"><label>Scene change before this scene</label><select class="ssc"><option value="">Default (set under Consistency)</option><option value="soft">Soft: same moment, people and objects stay where the previous scene left them</option><option value="hard">Hard: a whole new scene, nothing carries over</option></select></div><div style="grid-column:1/-1"><label>Long scene</label><select class="slm"><option value="">Default (Auto-split setting under Video and sampling)</option><option value="split">Split into one clip per sentence</option><option value="one">One clip for the whole scene (whole prompt at once)</option><option value="allone">One clip for the whole scene, in ALL scenes</option></select></div></div><div class="kx"><div class="g"><div><label>Last frame filename (optional)</label><input class="sl"></div></div><label>Dialogue (one per line, Speaker: line)</label><textarea class="sdl"></textarea><label>Scene sound design (optional)</label><input class="ssn"><div class="rlw"><label>Pictures used in this scene (tick the ones this scene needs; unticked pictures are not connected to it)</label><div class="rchips" style="display:flex;flex-wrap:wrap;gap:4px 14px"></div><input class="srr" type="hidden"></div></div><div class="rst" style="color:#8a93a0;font-size:12px"></div><div class="fr"></div>';
              c.querySelector(".sp").value=p||"";c.querySelector(".sd").value=d||$("dd").value||15;
              c.querySelector(".sf").value=f||"";c.querySelector(".ss").value=s==null?"":s;
              $("scenes").appendChild(c);renum();
@@ -2360,7 +2359,6 @@ three-quarter: three-quarter view from above</textarea>
               lm:c.querySelector(".slm").value,
               k:(()=>{const v=c.querySelector(".ssc").value;return v==="hard"||(v===""&&$("dsc2").value==="hard");})(),
               dl:c.querySelector(".sdl").value.trim(),
-              on:c.querySelector(".son").value.trim(),
               sn:c.querySelector(".ssn").value.trim(),
               rr:c.querySelector(".srr").value.trim(),
               bs:(c.querySelector(".sbs")?c.querySelector(".sbs").value:"").trim().toLowerCase(),
@@ -2381,7 +2379,7 @@ three-quarter: three-quarter view from above</textarea>
              const VE=$("ve").value,MMV=VE==="mm",FAM=MMV?"mm":(VE.startsWith("wan")?"wan":"ltx"),VEN={mm:"MiniMax H3",wan21:"Wan 2.1",wan22:"Wan 2.2",ltx23:"LTX 2.3",ltx25:"LTX 2.5"}[VE];
              const mode=$("mode").value,aud=$("aud").checked&&FAM!=="wan",lora=$("lora").checked,turbo=$("turbo").checked;
              const g=$("gff").value.trim()||refFirst(),main="",mxv=$("mx").value.trim();
-             const JF=$("jf").checked,JC=$("jc").checked&&$("jf").checked,RM=false,MU=$("mu").checked||!!AO,GC=false,JN=Math.max(1,parseInt($("jn").value,10)||1),kfOn=$("kf").checked&&!RM&&!JF,bib=true,SG=$("sgOn").checked,SGS=Math.min(10,Math.max(1,parseInt($("sgs").value,10)||5)),SGD=Math.min(1,Math.max(0,isNaN(parseFloat($("sgd").value))?0:parseFloat($("sgd").value))),SGK=Math.max(0.1,parseFloat($("sgk").value)||1),SGA=$("sga").value,SGX=$("sgx").checked,SGDT=Math.min(2,Math.max(0,parseFloat($("sgdt").value)||0)),NCAND=MMV?Math.min(4,Math.max(1,parseInt($("sgc").value,10)||1)):1,ext=$("ext").checked,nj0=$("nj").checked,UP=$("up").checked&&!DR;
+             const JF=$("jf").checked,JC=$("jc").checked&&$("jf").checked,RM=false,MU=$("mu").checked||!!AO,GC=false,JN=Math.max(1,parseInt($("jn").value,10)||1),kfOn=$("kf").checked&&!RM&&!JF,bib=true,SG=$("sgOn").checked,SGS=Math.min(10,Math.max(1,parseInt($("sgs").value,10)||5)),SGD=Math.min(1,Math.max(0,isNaN(parseFloat($("sgd").value))?0.5:parseFloat($("sgd").value))),SGK=Math.max(0.1,parseFloat($("sgk").value)||1),SGA=$("sga").value,SGX=$("sgx").checked,NCAND=MMV?Math.min(4,Math.max(1,parseInt($("sgc").value,10)||1)):1,ext=$("ext").checked,nj0=$("nj").checked,UP=$("up").checked&&!DR;
              const SPON=$("spon").checked,CAP=Math.max(0,parseFloat($("mxs").value)||0);
              const S0=(()=>{const out=[],nos=[],lng=[];let nsp=0;
               S00.forEach((s,oi)=>{s.oi=oi;s.part=0;s.np=1;s.cp=s.p;s.lab="";
@@ -2423,28 +2421,41 @@ three-quarter: three-quarter view from above</textarea>
              const chars=(()=>{const order=[],by={};
               const add=(line,isRef)=>{const k=line.indexOf(":"),nm=(k>0?line.slice(0,k):line).trim(),key=nm.toLowerCase(),d=k>0?line.slice(k+1).trim().replace(/[.\s]+$/,""):"";
                if(!key)return;if(!by[key]){by[key]={nm:nm,d:[]};order.push(key);}
-               if(d&&!by[key].d.some(x=>{const a=x.toLowerCase().replace(/^look: /,""),b=d.toLowerCase();return a===b||a.includes(b.slice(0,60))||b.includes(a.slice(0,60));}))by[key].d.push((isRef&&by[key].d.length?"look: ":"")+d);};
+               if(d&&!by[key].d.some(x=>x.toLowerCase().replace(/^look: /,"")===d.toLowerCase()))by[key].d.push((isRef&&by[key].d.length?"look: ":"")+d);};
               $("bch").value.split("\n").map(x=>x.trim()).filter(Boolean).forEach(l=>add(l,false));
               refs().filter(r=>r.n&&r.d).forEach(r=>add(r.n+": "+r.d,true));
               return order.map(k=>by[k].d.length?by[k].nm+": "+by[k].d.join("; "):by[k].nm);})();
-             const castOf=s=>{const hay=((s.cp||s.p)+" "+s.dl+" "+(s.on||"")).toLowerCase(),rr=(s.rr||"").toLowerCase();
-              return chars.filter(c=>{const nm=c.split(":")[0].trim().toLowerCase();if(!nm)return false;const ft=nm.split(/\s+/)[0];
-               return hay.includes(nm)||(ft.length>=3&&new RegExp("\\b"+ft.replace(/[^a-z0-9]/g,"")+"\\b").test(hay))||(rr&&rr.includes(nm));});};
+             const castOf=s=>{const hay=(s.cp||s.p)+" "+s.dl,rr=(s.rr||"").toLowerCase();
+              return chars.filter(c=>{const nm=c.split(":")[0].trim();if(!nm)return false;
+               return nameAt(hay,nm)>=0||(rr&&rr.split(",").map(x=>x.trim()).includes(nm.toLowerCase()));});};
+             /* Does this text name the character? Full name in any case, singular or plural ("Nebula Puff" matches
+                "Nebula Puffs"). The first word alone counts only when written with a capital letter, as a name: "Leo"
+                matches, but "a purple nebula" no longer pulls in "Nebula Puffs". */
+             const esc0=x=>x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+             const nameAt=(text,name)=>{const nm=String(name||"").trim();if(!nm||!text)return -1;
+              const base=nm.replace(/(es|s)$/i,""),full=new RegExp("(^|[^A-Za-z0-9])"+esc0(base)+"(s|es)?($|[^A-Za-z0-9])","i");
+              let m=text.match(full);if(m)return m.index;
+              const ft=nm.split(/\s+/)[0];
+              if(nm.split(/\s+/).length>1||ft.length>=3){if(ft.length<3)return -1;
+               const cap=ft.charAt(0).toUpperCase()+ft.slice(1).toLowerCase();
+               m=text.match(new RegExp("(^|[^A-Za-z0-9])"+esc0(cap)+"($|[^A-Za-z0-9])"));if(m)return m.index;}
+              return -1;};
              const NW=["no","one","two","three","four","five","six","seven","eight","nine","ten"];
+             /* The previous shot's last sentence is quoted for continuity. If it names someone who is not in this scene,
+                quoting it puts that character back on screen, so only the place, light and positions are carried over. */
+             const foreign=(txt,s)=>{const inS=castOf(s).map(c=>c.split(":")[0].trim().toLowerCase());
+              return chars.some(c=>{const nm=c.split(":")[0].trim();return nm&&!inS.includes(nm.toLowerCase())&&nameAt(txt,nm)>=0;});};
              const castLine=s=>{const m=castOf(s);
-              return m.length?"Exactly "+(m.length<NW.length?NW[m.length]:m.length)+" featured character"+(m.length>1?"s":"")+": "+(m.length>1?m.map((c,j)=>"("+(j+1)+") "+c).join(". "):m[0])+". Each one has the same face, hair, body build, age and clothing in every frame, and each appears exactly once: no duplicates, twins, clones or look-alikes of any of them"
+              return m.length?"Exactly "+(m.length<NW.length?NW[m.length]:m.length)+" featured character"+(m.length>1?"s":"")+": "+(m.length>1?m.map((c,j)=>"("+(j+1)+") "+c).join(". "):m[0])+". Each one has the same face, hair, body build, age and clothing in every frame"
                :(chars.length?"Only the people, creatures and objects named in the description are in the shot":"");};
-             /* who is visible at the start of the clip and what they wear now (continuity from the previous scene) */
-             const onLine=s=>{const L=String(s.on||"").split("\n").map(x=>x.trim().replace(/[.\s]+$/,"")).filter(Boolean);if(!L.length)return "";
-              return (s.part>0?"The same people stay in this shot, in the same clothes, and nobody else appears: ":"At the start of this shot exactly these people are visible, and nobody else (where this differs from the description above, this current state is what they look like now): ")+L.join("; ");};
              const compose=s=>{let b=main&&s.p?main+". "+s.p:(main||s.p),x=[];
               {const js=$("jsty").value.trim();if(js&&!/anim|cartoon|illustrat|paint|watercolo|3d|render|pixel|sketch|comic|manga|vector/i.test(js))
                 x.push("Live-action film footage of real actors shot with a real cinema camera: real skin texture, natural human proportions and real materials in every frame. Not animation, not a cartoon, not 3D-rendered or stylised. Any creatures look like realistic practical or visual effects inside the live-action shot");}
               if(bib){const st=$("bst").value.trim();if(st)x.push("Style: "+st);
-               const cl=castLine(s);if(cl)x.push(cl);const ol=onLine(s);if(ol)x.push(ol);
+               const cl=castLine(s);if(cl)x.push(cl);
                const gs=$("bsn").value.trim();if(gs)x.push("Sound: "+gs);}
               x.push("The place, time of day and lighting stay the same from the first frame to the last");
-              {const pe=prevEnd(s);if(pe)x.push("This shot starts where the previous shot ended ("+pe+"): the people and objects begin in the same positions, posture and clothing, unless the action described above changes them");}
+              {const pe=prevEnd(s);if(pe)x.push(foreign(pe,s)?"This shot starts where the previous shot ended: same place and lighting, and the people listed above begin in the same positions, posture and clothing, unless the action described above changes them. Nobody else is in the shot":"This shot starts where the previous shot ended ("+pe+"): the people and objects begin in the same positions, posture and clothing, unless the action described above changes them");}
               if(s.part>0&&!RM)x.push("This continues the same shot from the opening frame: carry on with the next moment of the action without restarting or repeating what already happened");
               x.push("One single unbroken take from one camera setup. Only the action described above happens, in the order described, from the first frame to the last");
               if(s.d>0)x.push("Unhurried, even pace: the described action takes the whole "+(Math.round(s.d*10)/10)+" seconds and its final moment happens at the very end of the clip, with no waiting, freezing or repeating before then");
@@ -2478,7 +2489,6 @@ three-quarter: three-quarter view from above</textarea>
              if(kfOn)W.push("Keyframes ON: "+(kc-1)+" images ("+kn(1)+" ... "+kn(kc-1)+" unless overridden) must be in ComfyUI/input. Last frame feeds H3's last_frame input; first-frame mode and generated reference are ignored.");
              if(turbo&&!lora)W.push("turbo LoRA may be required for 4-step sampling");
              if(+$("bat").value>1)W.push("Batch size ignored: MiniMaxH3ImageToVideo has no batch widget.");
-             if(MMV){const wn=mmWeightNote();if(wn)W.push("SPEED: "+wn);}
              if(/8b/i.test($("te").value))W.push("An 8B Qwen3-VL encoder outputs 4096-dim embeddings; the H3 model needs 5120-dim (32B encoder). Expect a mat1/mat2 shape error.");
              if($("rs").value==="gen"&&MMV&&!RM&&!JF&&!kfOn)W.push("Generated first frame = frame 0 of a 5-frame H3 text-to-video clip (no separate image model is wired). Check the Preview node; re-run until you like it.");
              W.push("Negative prompt and CFG are not wired: the reference graph uses BasicGuider (no CFG).");
@@ -2683,9 +2693,8 @@ three-quarter: three-quarter view from above</textarea>
              const refLog={},vLog={};
              const rmissed=new Set();
              const rdrop=new Set();const pick=s=>{const list=RA.map((r,i)=>({r:r,i:i})).filter(o=>o.r.node||o.r.f),mode=$("rlink").value,CAPR=Math.max(0,parseInt($("rmxs").value,10)||0),sel=(s.rr||"").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);let m;
-              const hay=((s.cp||s.p)+" "+s.dl+" "+(s.on||"")).toLowerCase(),esc=x=>x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
-              const named=o=>{const nm=(o.r.n||"").toLowerCase().trim();if(!nm)return -1;let p=hay.search(new RegExp("(^|[^a-z0-9])"+esc(nm)+"($|[^a-z0-9])"));if(p>=0)return p;
-               const ft=nm.split(/\s+/)[0];if(o.r.t==="character"&&ft.length>=3){p=hay.search(new RegExp("(^|[^a-z0-9])"+esc(ft)+"($|[^a-z0-9])"));}return p;};
+              const hay=((s.cp||s.p)+" "+s.dl).toLowerCase(),esc=x=>x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+              const named=o=>nameAt((s.cp||s.p)+" "+s.dl,o.r.n||"");
               if(mode==="list")m=list.filter(o=>sel.includes(String(o.i+1))||(o.r.n&&sel.includes(o.r.n.toLowerCase())));
               else if(mode==="name"){m=list.map(o=>({o:o,p:named(o)})).filter(x=>x.p>=0||sel.includes(String(x.o.i+1))||(x.o.r.n&&sel.includes(x.o.r.n.toLowerCase()))).sort((a,b)=>(a.p<0?-1:a.p)-(b.p<0?-1:b.p)).map(x=>x.o);}
               else m=list;
@@ -2694,12 +2703,15 @@ three-quarter: three-quarter view from above</textarea>
               const lk=m.map(o=>o.i+1).join(",")||"none",ga=refLog[lk]=refLog[lk]||[];if(ga[ga.length-1]!==s.gi+1)ga.push(s.gi+1);
               if(!AV&&!RA.some(r=>r.bk&&r.bkd&&r.bkd.trim()))return m;
               const v=viewOf(s),shot=(s.bs||"").trim().toLowerCase(),out=[];let vm=0,usedShot=null;
+              /* ONE picture per subject. Sending the original and a baked shot of the same person made the image model draw
+                 that person twice (it reads every picture as a different subject). The scene's chosen shot wins; otherwise a
+                 baked view that matches a non-front camera view; otherwise the original image. */
               m.forEach(o=>{const nm=o.r.n||("reference "+(o.i+1)),mp=VU[o.i]||{};
-               out.push({r:Object.assign({},o.r,{n:nm+", original image"}),i:o.i});
-               if(shot&&o.r.bk&&mp[shot]){usedShot=shot;out.push({r:{n:nm+", "+shot,d:(mp[shot].d||""),node:mp[shot].node,f:"baked"},i:2000+o.i*100+1});return;}
+               if(shot&&o.r.bk&&mp[shot]){usedShot=shot;out.push({r:{n:nm,d:o.r.d||"",node:mp[shot].node,f:"baked"},i:2000+o.i*100+1});return;}
                /* an angle stores the node itself; a baked shot stores {n,d,node,f}. Accept both. */
-               const vr=mp[v]||null,vn=vr&&!vr.outputs&&vr.node?vr.node:vr;
-               if(vn){vm++;out.push({r:{n:nm+", "+VL[v],d:"",node:vn,f:"view"},i:1000+o.i*10+Object.keys(VL).indexOf(v)});}});
+               const vr=v!=="front"?(mp[v]||null):null,vn=vr&&!vr.outputs&&vr.node?vr.node:vr;
+               if(vn){vm++;out.push({r:{n:nm,d:o.r.d||"",node:vn,f:"view"},i:1000+o.i*10+Object.keys(VL).indexOf(v)});return;}
+               out.push({r:Object.assign({},o.r,{n:nm}),i:o.i});});
               const miss=m.filter(o=>o.r.x&&!(VU[o.i]||{})[v]).length,vk=(usedShot?("baked:"+usedShot):v)+(miss?" (missing for "+miss+" reference(s))":""),va=vLog[vk]=vLog[vk]||[];if(va[va.length-1]!==s.gi+1)va.push(s.gi+1);
               return out;};
              const pcache={},refName=o=>o.r.n||"reference "+(o.i+1);
@@ -2723,15 +2735,12 @@ three-quarter: three-quarter view from above</textarea>
              const qf=[],f0=nid,CLIPS=[],SGHOLD=[];let fids=[];
              const qFirst=(s,i,prev)=>{const x=-800+i*750,t=s.gi+1,sty=$("bst").value.trim(),cap=parseInt($("jmax").value,10)||0,m0=pick(s),canRef=IE==="qwen"||IE==="flux2",pk=canRef?packRefs(m0,cap>0?cap:(IE==="qwen"?16:999)):[];
               const po=prev&&canRef?1:0,tag=canRef?(po?["Picture 1: the last frame of the previous shot (keep its location, lighting, time of day, colour grade and costumes)"]:[]).concat(pk.map((q,j)=>"Picture "+(j+1+po)+": "+q.l+(q.d?" ("+q.d+")":""))).join("; "):m0.map(o=>(o.r.n?o.r.n+(o.r.d?" ("+o.r.d+")":""):o.r.d)).filter(Boolean).join("; ");
-              const pr=(tag?(canRef?"Reference images - ":"Subjects: ")+tag+". ":"")+(AV&&canRef?"Camera view of the subjects: "+VL[viewOf(s)]+", keep each subject identical to its original image. ":"")+(prev?"Continue directly from the end of the previous shot"+(canRef?" (Picture 1)":"")+": same place, lighting, time of day, costumes and colour grade unless this scene says otherwise. ":"")+(s.gi>0&&!s.k&&!prev&&S0[s.gi-1]?(()=>{const ps=((S0[s.gi-1].p||"").match(/[^.!?]+[.!?]*/g)||[]).map(x=>x.trim()).filter(Boolean);return ps.length?"The previous shot ended with: "+ps[ps.length-1].replace(/[.!?]+$/,"")+". Subjects keep the posture, position, clothing and place they had at the end of the previous shot unless this scene says otherwise. ":"";})():"")+"Opening frame of the shot: "+s.p.replace(/[.\s]+$/,"")+(castLine(s)?". "+castLine(s):"")+(onLine(s)?". "+onLine(s):"")+(sty?". "+sty:"")+($("jsty").value.trim()?". "+$("jsty").value.trim():"");
+              const pr=(tag?(canRef?"Reference images - ":"Subjects: ")+tag+". "+(canRef&&pk.length>1?"Each picture shows a different subject, and each subject appears exactly once in the frame. ":""):"")+(AV&&canRef?"Camera view of the subjects: "+VL[viewOf(s)]+", keep each subject identical to its original image. ":"")+(prev?"Continue directly from the end of the previous shot"+(canRef?" (Picture 1)":"")+": same place, lighting, time of day, costumes and colour grade unless this scene says otherwise. ":"")+(s.gi>0&&!s.k&&!prev&&S0[s.gi-1]?(()=>{const ps=((S0[s.gi-1].p||"").match(/[^.!?]+[.!?]*/g)||[]).map(x=>x.trim()).filter(Boolean);const lst=ps.length?ps[ps.length-1].replace(/[.!?]+$/,""):"";if(lst&&foreign(lst,s))return "Same place, lighting and time of day as the previous shot; only the subjects listed below are in this frame. ";return ps.length?"The previous shot ended with: "+lst+". Subjects keep the posture, position, clothing and place they had at the end of the previous shot unless this scene says otherwise. ":"";})():"")+"Opening frame of the shot: "+s.p.replace(/[.\s]+$/,"")+(castLine(s)?". "+castLine(s):"")+(sty?". "+sty:"")+($("jsty").value.trim()?". "+$("jsty").value.trim():"");
               const dc=pfn(imgGen("First Frame "+t,x,-1700,pr,+$("kw").value||1280,+$("kh").value||720,(bsv<0?rnd+s.gi:bsv+s.gi)+OFF,canRef?pk.map((q,j)=>j===0?rgate(q.n,t,x):q.n):[],prev||null,prev?(Math.min(1,Math.max(0.1,parseFloat($("jcs").value)||0.6))):undefined,true),"First Frame "+t,x,null);
               const sv=N("SaveImageAdvanced","Save First Frame "+t,x,dc.pos[1]+150,["first_frames/"+base+"_first_"+String(t).padStart(2,"0"),"png","8-bit","sRGB"],[["images","IMAGE"]],[]);L(dc,0,sv,0);
               return dc;};
              const isAnc=(s,i)=>(i===0||JN<=1||s.gi%JN===0||s.k)&&!(s.part>0);
              const isAncFull=s=>(s.gi===0||JN<=1||s.gi%JN===0||s.k)&&!(s.part>0);
-             /* s.ch: this clip starts from the previous clip's last frame, so its first frame repeats that frame.
-                The finishing script drops it (picture and sound together) so joins do not stutter. */
-             S0.forEach(s=>{s.ch=s.gi>0&&!s.k&&!kfOn&&(s.part>0||(JF?!isAncFull(s):(mode==="last_frame_chain"&&!s.f)));});
              const dfr=[];
              if(JF){S.forEach((s,i)=>{const anc=s.fromClip?isAncFull(s):isAnc(s,i);
               /* a full render starts this scene from a fresh first frame: nothing carries over, so no saved clip is needed */
@@ -2801,14 +2810,8 @@ three-quarter: three-quarter view from above</textarea>
              if(UP&&!nj)W.push("Upscaling multiplies the memory used by the in-graph join. For long films tick 'Skip in-graph join'.");
              const RFS=$("rfs").checked,RFU=$("rfu").checked,RFI=$("rfi").checked&&IE!=="h3";
              const ANC=$("anc").checked&&(RM||JF||mode==="last_frame_chain");
-             /* ANCREF = the last clean first frame (image-model frame, supplied frame or scene 1 picture). Chained
-                frames are matched to it, not to the raw reference sheets: a sheet on a white background has
-                completely different colour statistics from a scene and would wash the frame out. */
-             let ANCREF=null;const ANCV=[Math.min(1,Math.max(0,parseFloat($("anca").value)||0)),Math.min(1,Math.max(0,parseFloat($("anci").value)||0)),Math.min(0.6,Math.max(0,parseFloat($("ancs").value)||0))];
-             if(ANC)W.push("Scene Anchor is on: before a scene's last frame starts the next scene it is colour-matched to the last clean first frame (made from your references at the last re-anchor or hard cut). Needs the ripcurlsurf_comfy custom nodes from this page.");
              if(RFI)setupIG();
              const RFR=(la,t,x,sc)=>{let n=la;
-              if(ANC&&ANCREF){const an=N("SceneAnchor","Scene Anchor "+t,x+380,1300,[ANCV[0],ANCV[1],ANCV[2],RFS?0:0.35,0.15,1,(bsv<0?rnd:bsv)+7000+sc.gi],[["image","IMAGE"],["reference","IMAGE",{shape:7}],["reference_b","IMAGE",{shape:7}],["reference_c","IMAGE",{shape:7}],["mask","MASK",{shape:7}]],[["IMAGE","IMAGE"]]);L(n,0,an,0);L(ANCREF,0,an,1);n=an;}
               if(RFS){const sh=N("ImageSharpen","Refresh Sharpen "+t,x+380,1450,[1,1,+$("rsa").value||0.4],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(n,0,sh,0);n=sh;}
               if(RFU){const um=N("ImageUpscaleWithModel","Refresh Upscale "+t,x+380,1600,[],[["upscale_model","UPSCALE_MODEL"],["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(upl,0,um,0);L(n,0,um,1);
                const bk=N("ImageScale","Refresh Downscale "+t,x+380,1750,["lanczos",w,h,"disabled"],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(um,0,bk,0);n=bk;}
@@ -2854,7 +2857,6 @@ three-quarter: three-quarter view from above</textarea>
               else if(s.part>0&&!RM&&lf[i-1]){img=lf[i-1];chained=true;}else if(RM){img=null;}else if(JF&&qf[i]){img=qf[i];}else if(JF){img=lf[i-1];chained=true;}else if(kfOn){img=(s.gi===0&&!s.f&&refImg&&$("rfirst").checked)?refImg:mk(s.sf);}else if(mode==="global_first_frame_scene1_only"){if(i===0)img=gi();}
               else if(mode==="per_scene_manual"){if(s.f)img=mk(s.f);else if(i===0)img=gi();}
               else if(s.f)img=mk(s.f);else if(i===0)img=gi();else if(s.k){img=null;}else{img=lf[i-1];chained=true;}
-              if(img&&!chained)ANCREF=img;else if(s.k&&!img)ANCREF=null;
               const blend=src=>{const b=N("ImageBlend","Order Lock "+t,x,-450,[0,"normal"],[["image1","IMAGE"],["image2","IMAGE"]],[["IMAGE","IMAGE"]]);L(src,0,b,0);L(prevTok,0,b,1);return b;};
               const lockNow=LK&&i>0&&prevTok;
               let gs=null;
@@ -2883,9 +2885,9 @@ three-quarter: three-quarter view from above</textarea>
               let adn=null;if(aud){adn=MMR.ad;if(!adn){adn=N("VAEDecodeAudio","Audio Decode "+t,x,1000,[],[["samples","LATENT"],V],[["AUDIO","AUDIO"]]);L(sp,0,adn,0);L(av,0,adn,1);}}
               let gsrc=vd;
               if(SG){const alts=MMR.alts||[],gin=[["images","IMAGE"],["audio","AUDIO",{shape:7}]];
-               ["b","c","d"].forEach(q=>{gin.push(["images_"+q,"IMAGE",{shape:7}]);gin.push(["audio_"+q,"AUDIO",{shape:7}]);});gin.push(["reference","IMAGE",{shape:7}]);
-               const gg=N("SceneGuard","Scene Guard "+t,x+190,880,[fps,"Scene "+(s.oi+1)+(s.np>1?" part "+(s.part+1)+" of "+s.np:"")+" (file "+String(t).padStart(2,"0")+")",SGS,SGD,SGK,(SGA==="slow_to_fit"&&String(s.dl||"").trim()?(SGHOLD.push(t),"hold_last_frame"):SGA),SGX?"cuts, frozen endings and replays":"cuts only",len,true,SGDT],gin,[["images","IMAGE"],["audio","AUDIO"],["report","STRING"],["frames_out","INT"]]);
-               L(vd,0,gg,0);if(adn)L(adn,0,gg,1);if(img&&SGDT>0)L(img,0,gg,8);
+               ["b","c","d"].forEach(q=>{gin.push(["images_"+q,"IMAGE",{shape:7}]);gin.push(["audio_"+q,"AUDIO",{shape:7}]);});
+               const gg=N("SceneGuard","Scene Guard "+t,x+190,880,[fps,"Scene "+(s.oi+1)+(s.np>1?" part "+(s.part+1)+" of "+s.np:"")+" (file "+String(t).padStart(2,"0")+")",SGS,SGD,SGK,(SGA==="slow_to_fit"&&String(s.dl||"").trim()?(SGHOLD.push(t),"hold_last_frame"):SGA),SGX?"cuts, frozen endings and replays":"cuts only",len,true],gin,[["images","IMAGE"],["audio","AUDIO"],["report","STRING"],["frames_out","INT"]]);
+               L(vd,0,gg,0);if(adn)L(adn,0,gg,1);
                alts.forEach((a,q)=>{L(a.vd,0,gg,2+2*q);if(aud){const aq=N("VAEDecodeAudio","Audio Decode "+t+" try "+(q+2),x+60*(q+1),1000,[],[["samples","LATENT"],V],[["AUDIO","AUDIO"]]);L(a.sp,0,aq,0);L(av,0,aq,1);L(aq,0,gg,3+2*q);}});
                gsrc=gg;}
               let vdo=gsrc;if(UP){const um=N("ImageUpscaleWithModel","Upscale "+t,x+380,850,[],[["upscale_model","UPSCALE_MODEL"],["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(upl,0,um,0);L(gsrc,0,um,1);vdo=um;
@@ -2894,8 +2896,6 @@ three-quarter: three-quarter view from above</textarea>
               const cv=N("CreateVideo","Create Video "+t,x,1150,[fps,8],ci,[["VIDEO","VIDEO"]]);L(vdo,0,cv,0);
               if(aud)L(SG?gsrc:adn,SG?1:0,cv,1);
               const cp=N("GetVideoComponents","Segment "+t+" Components",x,1300,[],[["video","VIDEO"]],[["images","IMAGE"],["audio","AUDIO"],["fps","FLOAT"],["bit_depth","INT"]]);L(cv,0,cp,0);comps.push(cp);
-              /* no clean first frame (text-to-video start or hard cut without a picture): anchor to this clip's own first frame */
-              if(ANC&&!img&&!ANCREF){ANCREF=N("ImageFromBatch","Anchor Frame "+t,x,1900,[0,1],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(cp,0,ANCREF,0);}
               if(LK&&i<S.length-1){prevTok=N("ImageFromBatch","Order Token "+t,x,1450,[len-1,1],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(cp,0,prevTok,0);
                szTok=N("ImageFromBatch","Order Size Token "+t,x,1600,[0,1],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(vd,0,szTok,0);}
               if((mode==="last_frame_chain"&&!RM)||(JF&&JN>1)||JC||(RM&&GC)||SPL){const la=N("ImageFromBatch","Segment "+t+" Last Frame",x,1450,[-1,1],[["image","IMAGE"]],[["IMAGE","IMAGE"]]);L(UP?gsrc:cp,0,la,0);lf.push(i<S.length-1?RFR(la,t,x,s):la);
@@ -2905,13 +2905,15 @@ three-quarter: three-quarter view from above</textarea>
               imgs.push(cp);
               const nm=base+"_scene_"+String(t).padStart(2,"0");names.push(nm+".mp4");
               if($("lpng").checked){const sq=N("SaveImage","Save Lossless Frames "+t,x+350,1300,["lossless/"+nm+"/f"],[["images","IMAGE"]],[]);L(vdo,0,sq,0);}
-              if($("sv").checked||nj){const sv=N("SaveVideo","Save Segment "+t,x,1750,["video/"+nm,"auto","auto"],[["video","VIDEO"]],[]);L(cv,0,sv,0);}
+              /* every scene is always saved: the finishing script, single-scene redos and a crashed run all depend on these files */
+              {const sv=N("SaveVideo","Save Segment "+t,x,1750,["video/"+nm,"auto","auto"],[["video","VIDEO"]],[]);L(cv,0,sv,0);}
               grp.push(nodes.filter(n=>n.id>g0&&!/^Reference /.test(n.title)).map(n=>n.id));
              });
              if(SGHOLD.length)W.push("Scene guard: scene(s) "+SGHOLD.slice(0,15).join(", ")+(SGHOLD.length>15?" ...":"")+" have spoken lines, so a rescued clip holds its last good frame instead of being slowed down. Slowing the picture cannot slow the speech, so the lips would drift out of sync.");
              if(CLIPS.length)W.push("Continuing from saved clips: scene(s) "+CLIPS.slice(0,12).join(", ")+(CLIPS.length>12?" ...":"")+" pick up from the last frame of the previous scene's saved clip, the same as in a full render. In ComfyUI each has a node titled 'Previous Scene N Clip' that reads output/video/<file>_00001_.mp4. If you rendered that scene more than once, or the node shows red, click its upload button and pick the clip you kept.");
              if(SG)if(MMV===false&&parseInt($("sgc").value,10)>1)W.push("Tries per scene only works with MiniMax H3; "+VEN+" renders each scene once.");
              if(SG)W.push("Scene guard is on: every clip is forced to exactly its planned length, checked for sudden scene changes (cut off where they start) and measured for frozen endings and replays; each scene is logged in ComfyUI/output/scene_guard_log.txt"+(NCAND>1?". Each MiniMax scene is rendered "+NCAND+" times and the best try is kept, so rendering takes about "+NCAND+" times longer":"")+". It needs the ripcurlsurf_comfy custom nodes. If the Scene Guard node is showing in red, install them (button under Consistency) or untick Scene guard.");
+             if(!LK&&S.length>1&&S.some((s,i)=>i>0&&s.k))W.push("Scene order is not forced: scenes that start with a hard cut have nothing linking them to the scene before, so ComfyUI may render them in any order. Tick 'Force scenes to generate strictly in order' to render 1, 2, 3 ...");
              if(LK&&S.length>1)W.push("Order lock: every scene waits for the previous scene to finish (through its first-frame image where it has one, otherwise through a hidden width link from the previous scene's decoded video), so scenes render 1, 2, 3 ... in order.");
              {const ks=Object.keys(refLog);if(ks.length&&(RM||JF)){const rng=a=>a.length>3?a[0]+"-"+a[a.length-1]+" ("+a.length+" scenes)":a.join(",");W.push("References linked per scene: "+ks.map(k=>"scene "+rng(refLog[k])+" -> reference "+k).join("; ")+". Total references on the page with an image or generation prompt: "+RA.filter(r=>r.node||r.f).length+".");}
               if(AV&&Object.keys(vLog).length&&(RM||JF)){const rng=a=>a.length>3?a[0]+"-"+a[a.length-1]+" ("+a.length+" scenes)":a.join(",");W.push("Camera view linked per scene: "+Object.keys(vLog).map(k=>"scene "+rng(vLog[k])+" -> "+k).join("; ")+".");}
@@ -3045,7 +3047,13 @@ three-quarter: three-quarter view from above</textarea>
             const SLUG={mm:"minimax_h3",wan21:"wan21",wan22:"wan22",ltx23:"ltx23",ltx25:"ltx25"};
             const slug=()=>SLUG[$("ve").value]||"video",finDef=ve=>(SLUG[ve]||"video")+"_final_video.mp4";
             function fixFin(){const v=$("fin").value.trim();if(v===""||Object.keys(SLUG).some(k=>v===finDef(k)))$("fin").value=finDef($("ve").value);}
-            function refAuto(){if(!$("refon").checked)return false;if(!$("jf").checked){$("jf").checked=true;if((parseInt($("jn").value,10)||1)>1)$("jn").value=1;$("jc").checked=true;return true;}return false;}
+            function refAuto(){const m=document.getElementById("jfLock");
+             /* With reference images on, first frames are the only way the references reach MiniMax H3, so the box stays ticked.
+                Trying to untick it shows a red ? whose tip explains why. It never changes the re-anchor or chaining settings. */
+             if(!$("refon").checked){if(m)m.classList.add("hid");return false;}
+             if(!$("jf").checked){$("jf").checked=true;return true;}return false;}
+            /* the red ? appears only when you click the locked box yourself */
+            document.addEventListener("click",e=>{if(e.target&&e.target.id==="jf"&&!e.target.checked&&$("refon").checked){const m=document.getElementById("jfLock");if(m)m.classList.remove("hid");}},true);
             function refFirst(){if(!$("rfirst").checked)return "";const r=refs().find(x=>x.f);return r?r.f:"";}
             function diagIssues(){const r=diagLast;return {E:r?r.E:[],W:r?r.W:[],J:DERR.slice()};}
             function diagReport(forFile){
@@ -3126,25 +3134,22 @@ three-quarter: three-quarter view from above</textarea>
               $("rangStat").textContent=(!edit)?"What will happen: nothing usable. "+nm+" cannot take pictures, and the video model only receives references and angles through first frames made by Qwen Image 2.1 or Flux 2. Pick one of those as the image model.":eff==="img"?"What will happen: "+nm+" makes the angle pictures from each original reference ("+n+" reference"+(n===1?"":"s")+" with extra angles ticked). Every scene then gets the original plus the angle that matches its camera view, through its generated first frame.":"What will happen: nothing is generated. 'Load Image (optional)' nodes are added for each angle; add the files to ComfyUI/input, until then the original reference stands in."+(a0==="img"?" ("+nm+" cannot take an input picture, so it cannot generate angles.)":"");}$("rangBox").classList.toggle("hid",!ra);document.querySelectorAll(".rxw").forEach(e=>e.classList.toggle("hid",!ron));{const bk=ron&&[...document.querySelectorAll(".rbk")].some(x=>x.checked);document.querySelectorAll(".rvw").forEach(e=>e.classList.toggle("hid",!(ra||bk)));}document.querySelectorAll(".rlw").forEach(e=>e.classList.toggle("hid",!ron||$("rlink").value!=="list"));$("refHint").textContent="";document.body.classList.toggle("kon",$("kf").checked||$("aud").checked||$("ext").checked);$("bPlan").style.display=$("bFF").style.display=$("exp").checked?"":"none";}
             function plan(r){const sp=t=>t.split("\n").map(x=>x.trim()).filter(Boolean);
              return JSON.stringify({output:r.fin,render_pass:r.DR?"draft":"final",take:r.TK,fps:r.fps,width:r.w,height:r.h,style:$("bst").value.trim(),characters:sp($("bch").value),reference_images:refs().map(r=>({name:r.n,file:r.f,description:r.d,type:r.t,angle_files:r.a,extra_angles:r.x})),global_sound:$("bsn").value.trim(),external_tts:r.ext,
-             scenes:r.S0.map((s,i)=>({scene:i+1,original_scene:(s.oi||0)+1,part:s.np>1?(s.part+1)+" of "+s.np:"",prompt:s.p,duration_s:s.d,frames:vl(s.d||0,r.fps),first_frame:r.kfOn?s.sf:s.f,last_frame:r.kfOn?s.lf:s.l,hard_cut:i===0||s.k,scene_change:s.sc||"",camera_view:s.v,dialogue:sp(s.dl),on_screen:sp(s.on||""),sound:s.sn,segment_prefix:r.base+"_scene_"+String(i+1).padStart(2,"0"),use_take:parseInt(s.tk,10)||1}))},null,2);}
+             scenes:r.S0.map((s,i)=>({scene:i+1,prompt:s.p,duration_s:s.d,frames:vl(s.d||0,r.fps),first_frame:r.kfOn?s.sf:s.f,last_frame:r.kfOn?s.lf:s.l,hard_cut:i===0||s.k,scene_change:s.sc||"",camera_view:s.v,dialogue:sp(s.dl),sound:s.sn,segment_prefix:r.base+"_scene_"+String(i+1).padStart(2,"0"),use_take:parseInt(s.tk,10)||1}))},null,2);}
             function tplFill(src,flags,vars){const out=[],st=[];src.split("\n").forEach(l=>{const m=l.match(/^#\?(\w+)\s*$/);if(m){const k=m[1];if(k==="END"){st.pop();return;}const neg=k.indexOf("NO")===0,key=neg?k.slice(2):k;st.push(neg?!flags[key]:!!flags[key]);return;}if(st.every(Boolean))out.push(l);});return out.join("\n").replace(/@@(\w+)@@/g,(a,k)=>vars[k]!==undefined?vars[k]:a);}
             function ffscript(r){const T=i=>String(i+1).padStart(2,"0"),ic=$("icod").value,fc=$("fcod").value,EXT=ic==="x264"?"mkv":ic==="ffv1"?"mkv":"mov",DS=r.DR?"_draft":"";
              const IENC=ic==="prores"?"-c:v prores_ks -profile:v 3 -vendor apl0 -pix_fmt yuv422p10le -c:a pcm_s24le":ic==="ffv1"?"-c:v ffv1 -level 3 -g 1 -pix_fmt yuv444p10le -c:a pcm_s24le":"-c:v libx264 -crf 12 -preset slow -pix_fmt yuv420p -c:a pcm_s24le";
              const crf=Math.max(0,Math.min(30,+$("fcrf").value||14)),pre=$("fpre").value||"slow",lut=$("lutf").value.trim().replace(/['"\\:]/g,""),gr=Math.max(0,Math.min(20,+$("grn").value||0));
              const FENC=fc==="h265"?"-c:v libx265 -crf "+crf+" -preset "+pre+" -pix_fmt yuv420p10le -tag:v hvc1 -x265-params log-level=error":"-c:v libx264 -crf "+crf+" -preset "+pre+" -profile:v high -pix_fmt yuv420p -movflags +faststart";
              const g=[];if($("dfl").checked)g.push("deflicker=mode=pm:size=5");if(lut)g.push("lut3d=file="+lut);if(gr>0)g.push("noise=alls="+gr+":allf=t");
-             const sc=r.S0.map((s,i)=>{const tk=Math.max(1,parseInt(s.tk,10)||1),sf=DS+(tk>1?"_t"+tk:"");return 'proc '+T(i)+' '+((r.kfOn?(i>0&&!s.k):s.ch)?1:0)+' "'+sf+'"\nlist_add '+T(i)+' "'+sf+'"';});
+             const sc=r.S0.map((s,i)=>{const tk=Math.max(1,parseInt(s.tk,10)||1),sf=DS+(tk>1?"_t"+tk:"");return 'proc '+T(i)+' '+(i>0&&!s.k&&r.kfOn?1:0)+' "'+sf+'"\nlist_add '+T(i)+' "'+sf+'"';});
              const hasA=r.aud||r.ext,flags={AUD:r.aud,EXTONLY:!r.aud&&r.ext,SILENT:!hasA,HASA:hasA,MUSIC:$("mu").checked,DUCK:$("duck").checked};
              const lines=sc.join("\n").split("\n"),procs=lines.filter(l=>l.indexOf("proc ")===0),lists=lines.filter(l=>l.indexOf("list_add")===0);
              const body=procs.join("\n")+"\n: > list.txt\n"+lists.join("\n");
              return tplFill($("tplFF").textContent.replace(/^\s*\n/,""),flags,{TITLE:"Finishing script for "+r.broot+(r.DR?" (DRAFT)":"")+". Scenes use the take chosen on each scene card (default take 1).",ROOT:r.broot,DSFX:DS,FPS:r.fps,EXT:EXT,LUFS:(+$("lufs").value||-16),ST:(1/r.fps).toFixed(6),IENC:IENC,FENC:FENC,GRADE:(g.length?g.join(","):"null"),MVOL:(+$("mvol").value||0.3),SCENES:body})+"\n";}
-            function dialogueSheet(){const r=build(),fps=r.fps,sp=t=>String(t||"").split("\n").map(x=>x.trim()).filter(Boolean);
-             const bible=sp($("bch").value).concat(refs().filter(q=>q.n&&q.d).map(q=>q.n+": "+q.d)),rows=[["scene","part","line","speaker","text","clip_start_s","clip_duration_s","scene_sound","put_audio_in_file","voice_notes"]];let t0=0;
-             /* One row per line, grouped by the clip file the finishing script mixes it into. Long scenes that are
-                auto-split are several files (scene_04, scene_05 ...), so the file numbers follow the clips, not your scene numbers. */
-             r.S0.forEach(s=>{const trim=(r.kfOn?(s.gi>0&&!s.k):s.ch)?1:0,dur=Math.round((vl(s.d||0,fps)-trim)/fps*1000)/1000;let n=0;
-              sp(s.dl).forEach(l=>{n++;const k=l.indexOf(":"),who=k>0?l.slice(0,k).trim():"",tx=k>0?l.slice(k+1).trim():l,b=bible.find(c=>who&&c.split(":")[0].trim().toLowerCase()===who.toLowerCase()),vn=b&&b.indexOf(";")>=0?b.slice(b.lastIndexOf(";")+1).trim():"";
-               rows.push([s.oi+1,s.np>1?(s.part+1)+" of "+s.np:"",n,who,tx,Math.round(t0*1000)/1000,dur,s.sn,"dialogue/scene_"+String(s.gi+1).padStart(2,"0")+".wav",vn]);});t0+=dur;});
+            function dialogueSheet(){const sp=t=>t.split("\n").map(x=>x.trim()).filter(Boolean),dd=+$("dd").value||15;
+             const bible=sp($("bch").value).concat(refs().filter(q=>q.n&&q.d).map(q=>q.n+": "+q.d)),rows=[["scene","line","speaker","text","scene_start_s","scene_duration_s","scene_sound","put_audio_in_file","voice_notes"]];let t0=0;
+             scenes().forEach((s,i)=>{const dur=s.d>0?s.d:dd;let n=0;sp(s.dl).forEach(l=>{n++;const k=l.indexOf(":"),who=k>0?l.slice(0,k).trim():"",tx=k>0?l.slice(k+1).trim():l,b=bible.find(c=>who&&c.split(":")[0].trim().toLowerCase()===who.toLowerCase()),vn=b&&b.indexOf(";")>=0?b.slice(b.lastIndexOf(";")+1).trim():"";
+              rows.push([i+1,n,who,tx,t0,dur,s.sn,"dialogue/scene_"+String(i+1).padStart(2,"0")+".wav",vn]);});t0+=dur;});
              const esc=v=>'"'+String(v).replace(/"/g,'""')+'"';return rows.map(r=>r.map(esc).join(",")).join("\r\n");}
             function allTakes(){const n=Math.max(1,Math.min(6,parseInt($("ntk").value,10)||1)),keep=$("tk").value,outs=[];
              for(let t=1;t<=n;t++){$("tk").value=t;const r=build();if(r.E.length){$("tk").value=keep;alert("Cannot generate take "+t+":\n- "+r.E.join("\n- "));refresh();return;}outs.push([r.base,JSON.stringify(r.wf,null,2)]);}
@@ -3160,11 +3165,11 @@ three-quarter: three-quarter view from above</textarea>
              set("rlink","name");set("rmxs",0);
              set("dd",5);set("spon",true);set("mxs",5);
              set("jn",3);set("jcs",0.65);
-             set("anc",true);set("anca",0.55);set("anci",0.20);set("ancs",0);
+             set("anc",true);set("anca",0.55);set("anci",0.40);set("ancs",0.15);
              set("rfs",true);set("rsa",0.35);
              set("rfu",false);
              set("rfi",true);set("rfd",0.30);
-             set("sgOn",true);set("sgc",1);set("sgx",false);
+             set("sgOn",true);set("sgc",2);set("sgx",false);
              set("sga","slow_to_fit");set("sgs",5);set("sgd",0);set("sgk",1);
              set("sgdt",0.35);
              set("lk",true);set("nj",true);set("sg",true);
@@ -3175,8 +3180,8 @@ three-quarter: three-quarter view from above</textarea>
               "  - One sentence per 5 seconds; long scenes are auto-split so no clip runs past the model's coherent window.\n"+
               "  - Soft scene changes by default: the next scene carries on from the last frame of the previous one.\n"+
               "  - Re-anchor every 3 scenes: every third scene is rebuilt from your reference images instead of the previous frame, so drift never compounds.\n"+
-              "  - Scene Anchor is ON: every chained frame is colour-matched to the last clean first frame (made from your references) before it starts the next scene.\n"+
-              "  - Scene Guard checks every clip (cuts, freezes, replays, drift from its first frame) and logs it. Each scene renders once; afterwards 'Re-render flagged scenes' redoes only the bad ones, which costs far less than rendering every scene twice.\n"+
+              "  - Scene Anchor is ON: every chained frame is pulled back toward the references before it becomes the next scene's first frame.\n"+
+              "  - Scene Guard renders each scene twice and keeps the take closest to the reference (drift score), not just the take without a cut.\n"+
               "  - Chained frames are refreshed with the image model at low denoise (0.30) and sharpened.\n"+
               "  - Scenes are packed into subgraphs, forced to render in order, and joined with ffmpeg so RAM stays low on hour-long films.\n\n"+
               "Recommended workflow:\n"+
@@ -3221,12 +3226,11 @@ three-quarter: three-quarter view from above</textarea>
              E.push(["nj","Skip in-graph join",nj]);E.push(["sg","Subgraph packing",n>6]);E.push(["lk","Force scene order",true]);
              E.push(["jf","Generate scene first frames",chain]);
              if(chain){E.push(["jn","Re-anchor every N scenes",goal==="long"?(t>=3?2:3):3]);E.push(["kw","First-frame width",w]);E.push(["kh","First-frame height",h]);}
-             E.push(["rfs","Sharpen chained frames",chain]);if(chain)E.push(["rsa","Sharpen strength",0.3]);
+             E.push(["rang","Multi-angle references",(goal==="quality"||goal==="long")&&(ie==="qwen"||ie==="flux2")]);E.push(["rfs","Sharpen chained frames",chain]);if(chain)E.push(["rsa","Sharpen strength",0.3]);
              E.push(["rfi","Image-model refresh of chained frames",chain&&imgOk&&t>=2]);if(chain&&imgOk&&t>=2)E.push(["rfd","Refresh strength",0.3]);
              E.push(["rfu","Upscale round trip on chained frames",chain&&t<=1&&!(imgOk&&t>=2)]);
              E.push(["up","Upscale video",goal==="quality"&&t>=2&&nj]);
              if(imgOk){const st={qwen:{preview:20,balanced:28,quality:40,long:36},flux2:{preview:16,balanced:20,quality:28,long:24},zimage:{preview:6,balanced:8,quality:9,long:8}}[ie];if(st)E.push(["rst","Image steps",st[goal]]);}
-             if(fam==="mm"){const wn=mmWeightNote();if(wn)N.push(wn);N.push("Start ComfyUI 0.36 or newer with --fast fp16_accumulation and keep the int8_convrot video VAE: the H3 VAE encode and decode run about twice as fast with no visible difference.");}
              if(t<=1)N.push("Under 16 GB VRAM: use the int8 / fp8 / nvfp4 quantised model files, close other GPU apps, and try ComfyUI's --lowvram if you run out of memory.");
              if(vram<16&&(ie==="qwen"||ie==="flux2"))N.push("Z-Image Turbo is the lightest image model and suits "+vram+" GB VRAM better than "+(ie==="qwen"?"Qwen Image 2.1":"Flux 2")+".");
              if(vram>=24&&ie==="zimage"&&(goal==="quality"||goal==="long"))N.push("Qwen Image 2.1 or Flux 2 follow reference images better than Z-Image Turbo, which only uses text. Better for long films.");
@@ -3236,8 +3240,6 @@ three-quarter: three-quarter view from above</textarea>
              N.push("Estimated memory for an in-graph join of "+n+" scene(s), "+total+" s at "+w+"x"+h+": about "+Math.round(peak)+" GB"+(nj?" (too much or a long film, so scenes are saved separately and joined with ffmpeg).":"."));
              if(goal==="long")N.push("For long films also render in chunks, keep reference images and the consistency bible on, and compare the last scene with the first on a short test run.");
              return {E:E,N:N};}
-            function mmWeightNote(){const v=+$("sgV").value||0,f=$("un").value.trim();if(!/bf16|fp16|fp32/i.test(f)||v>=80)return "";
-             return "The MiniMax H3 diffusion file '"+f+"' is full precision. H3 is a 33B model, so this file is larger than "+v+" GB of VRAM and ComfyUI streams the weights from system RAM on every sampling step, the slowest part of the render. A pruned 8-bit or 4-bit file that fits in VRAM gives the same picture in community tests and runs much faster: nvfp4 on RTX 50-series, w4a8 on RTX 40-series, int8 on RTX 30-series (the ComfyUI console line 'Native ops:' must list the format). Put its filename in 'Diffusion model file'.";}
             function sgCur(id){const e=$(id);return e.type==="checkbox"?e.checked:e.value;}
             function renderSuggest(){const el=$("sgOut");if(!el)return;const p=sgPlan(),ch=p.E.filter(e=>String(sgCur(e[0]))!==String(e[2]));
              el.textContent=(ch.length?"Suggested changes ("+ch.length+"):\n"+ch.map(e=>"  "+e[1]+": "+(typeof e[2]==="boolean"?(sgCur(e[0])?"on":"off")+" -> "+(e[2]?"on":"off"):sgCur(e[0])+" -> "+e[2])).join("\n"):"Your current settings already match the suggestion.")+"\n\nNotes:\n"+p.N.map(x=>"  - "+x).join("\n");
@@ -3263,62 +3265,31 @@ three-quarter: three-quarter view from above</textarea>
               angle_files:r.a,extra_angles:r.x,
               bake_shots:r.bk?r.bkr:"",
               bake_enabled:!!r.bk}));
-             const sc=scenes().map(x=>({prompt:x.p,duration_s:x.d>0?x.d:(+$("dd").value||15),first_frame:x.f,last_frame:x.l,hard_cut:x.k,scene_change:x.sc||"",long_scene:x.lm||"",dialogue:sp(x.dl),on_screen:sp(x.on),sound:x.sn,camera_view:x.v,baked_shot:x.bs||"",references:x.rr,seed:x.s===""?null:Number(x.s),use_take:x.tk===""?null:Number(x.tk)}));
+             const sc=scenes().map(x=>({prompt:x.p,duration_s:x.d>0?x.d:(+$("dd").value||15),first_frame:x.f,last_frame:x.l,hard_cut:x.k,scene_change:x.sc||"",long_scene:x.lm||"",dialogue:sp(x.dl),sound:x.sn,camera_view:x.v,baked_shot:x.bs||"",references:x.rr,seed:x.s===""?null:Number(x.s),use_take:x.tk===""?null:Number(x.tk)}));
              return {_instructions:[
-             "HOW TO USE: fill in this JSON template and return ONLY the completed JSON (no commentary, no markdown). It must be valid JSON: never put a double quote inside a text value (use single quotes instead), no comments, no trailing commas. Keep every key and the exact structure; do not rename keys. Keys starting with _ are ignored.",
+             "HOW TO USE: fill in this JSON template and return ONLY the completed JSON (no commentary, no markdown). Keep every key and the exact structure; do not rename keys. Keys starting with _ are ignored.",
              "story_brief is the premise or long prompt written by the user. Expand it into a full scene list. target_runtime_minutes: make the sum of all scene duration_s match it.",
              "SCENE RULE: if the user wrote a script or scene list, keep it exactly: one scene per script scene, in the same order. Do not invent, add, split, merge or reorder scenes, and do not add characters, locations or events that are not in the script. Only expand a scene into more scenes when story_brief is a short premise with no scenes. Each scene prompt must name every character in it exactly as in character_bible, state the location, and describe the action beat by beat for the whole duration (about 2 to 3 words per second), so the video model has nothing left to invent. Keep clips short, 4 to 8 seconds where possible.",
-             "scenes: one object per continuous clip, in story order. prompt = what is seen plus camera movement, present tense, concrete visual detail. Use character and location names exactly as in reference_images[].name so they stay consistent. Do not describe what the characters look like in prompt: the generator adds each named character's full description from character_bible automatically, and only for the characters named in that scene. When more than one person is on screen, use names instead of 'he', 'she' or 'the man'. Never mention a person who is not on screen in that scene. Do not put dialogue in prompt.",
-             "CHARACTERS: include only characters who are actually seen on screen (no unnamed extras or crowds unless the script has them). Give each person one name and always use exactly that name; never describe the same person a second way (for example 'Maya' and also 'the woman' or 'a young girl'), because the video model then draws two people. Each character_bible line is 'Name: ' followed by a detailed head-to-toe description of 60 to 120 words, never a single short sentence, in this order: age, gender, skin tone, height and build, face shape, eyes, eyebrows, nose, lips, facial hair, hair colour, length and style; then clothing from top to bottom: headwear, top, outer layer, trousers or skirt, belt, socks or tights, footwear, each with colour, material and fit; then accessories (glasses, jewellery, watch, bag) and distinguishing marks (scars, tattoos, freckles). End with '; voice: ' and a short voice description.",
-             "REFERENCE IMAGES: for a character, description is the same head-to-toe paragraph as its character_bible line (without the voice), written as a photograph of that one person alone, the whole body from the top of the head to the feet in frame, standing in a neutral pose, plain neutral background, soft even light. One reference per character, never two references of the same person under different names. A location description describes the place only, with no people in it.",
-             "scenes[].on_screen (CONTINUITY): array with one line for every character visible at the start of that scene, and nobody else, written as 'Name: what they are wearing right now, where they are in the frame, posture, what they are holding'. Work it out from the end of the previous scene: who is still there, who has left, and what has changed (coat taken off, sleeves rolled up, hair wet, mud on boots, an object picked up). Carry every change forward into all later scenes until the story changes it again. Anyone not listed must not appear. A soft scene_change starts exactly where the previous scene ended; a hard one may start in a new place, but clothing stays the same unless the story changes it. Do not repeat the full character_bible description here, only the current state.",
+             "scenes: one object per continuous clip, in story order. prompt = what is seen plus camera movement, present tense, concrete visual detail. Use character and location names exactly as in reference_images[].name so they stay consistent. Do not put dialogue in prompt.",
              "duration_s: normally 4 to 8 seconds; the generator splits anything longer into continuous parts. The generator rounds each clip up to a valid frame count automatically.",
              "dialogue: array of strings formatted 'Speaker: line'. sound: short ambience / foley / music note for the scene. Leave empty if none.",
-             "long_scene: 'split' = one clip per sentence, 'one' = one clip for the whole scene, empty = the page setting. scene_change: 'soft' = same story moment as the previous scene (people and objects stay where they were), 'hard' = a whole new scene or location, empty = the default from the page. hard_cut: true when the scene starts a new shot or location (matters when options.keyframes is true). first_frame and last_frame: leave empty unless the user supplied image filenames.",
-             "options.reference_images_active: set true only when reference_images should be used; false (default) ignores them. reference_images: one entry per character, location or style sheet. name = short label; description = for a character the full head-to-toe paragraph described under REFERENCE IMAGES, for a place the place with no people (it is also the image-generation prompt: a reference with an empty filename is generated from its description when options.generate_first_frames is true); filename = image name in ComfyUI input to use your own image, empty to generate it. All of them are linked to every scene unless scenes[].references limits them.",
+             "long_scene: \"split\" = one clip per sentence, \"one\" = one clip for the whole scene, empty = the page setting. scene_change: \"soft\" = same story moment as the previous scene (people and objects stay where they were), \"hard\" = a whole new scene or location, empty = the default from the page. hard_cut: true when the scene starts a new shot or location (matters when options.keyframes is true). first_frame and last_frame: leave empty unless the user supplied image filenames.",
+             "options.reference_images_active: set true only when reference_images should be used; false (default) ignores them. reference_images: one entry per character, location or style sheet. name = short label; description = look, outfit and voice (also the image-generation prompt: a reference with an empty filename is generated from its description when options.generate_first_frames is true); filename = image name in ComfyUI input to use your own image, empty to generate it. All of them are linked to every scene unless scenes[].references limits them.",
              "reference_images[].type: character, location or object. It decides which angle prompts are used when options.multi_angle_references is true (front, sides and back for characters; other camera positions for locations). angle_files: leave empty unless the user supplied their own angle images, written as 'front=a.png, back=b.png'. extra_angles: true to create extra angles for this reference, false for a reference that only needs its original image (props, style sheets, background plates).","reference_images[].bake_enabled + bake_shots: turn these on when the story reuses one place, vehicle or room across several scenes and the shots clearly differ (wide, corner, window, closeup). bake_enabled=true tells the generator to make each bake shot from the original image only; bake_shots is one line per shot, 'shot_id: prompt', where shot_id is a short lowercase word (wide, corner, nearwindow, closeup) and the prompt describes that exact camera position, keeping materials, layout, colours and lighting identical to the base reference. Every scene that uses this reference should then set scenes[].baked_shot to one of those shot_id values (leave camera_view on auto or set it too; baked_shot takes priority). A scene with no baked_shot falls back to the camera-view angle as usual.","scenes[].camera_view: front, left, right, back, three-quarter or auto. Set it to match the shot: back when we see a character from behind or the camera looks the opposite way in a location, left or right for profile shots, front for facing the camera. The generator links the reference angle that matches it. Use auto only if unsure. If a reference has bake_enabled, set scenes[].baked_shot to the shot id instead (camera_view becomes a fallback for scenes without a shot).","scenes[].references: normally leave empty. settings.reference_linking 'name' (default) connects only the references whose name appears in that scene's prompt or dialogue, at most settings.max_references_per_scene of them; 'list' uses each scene's own list of reference names (such as 'Maya,Kitchen') and nothing else; 'all' connects every reference to every scene. Name the characters and locations that appear in each scene's prompt exactly as in reference_images[].name.",
-             "consistency: style_line = one sentence of visual style shared by every scene; character_bible = array of 'Name: head-to-toe description; voice: ...' lines (see CHARACTERS); global_sound = one line of overall sound design.",
+             "consistency: style_line = one sentence of visual style shared by every scene; character_bible = array of 'Name: look; voice' lines; global_sound = one line of overall sound design.",
              "settings.render_pass: draft (fast, small preview of every scene) or final. scenes_to_render: a list like 3,5,10-14 (empty = all). take_number: 1 for the normal render, higher numbers re-render with new seeds. project_seed keeps reference images identical across passes: do not change it once references look right. scenes[].use_take: which take of that scene the finishing script uses (empty = 1). options.lossless_png_frames saves PNG frames for the finishing script. settings.scene_file_codec is prores, ffv1 or x264; final_codec is h264 or h265; final_crf 12 to 18; lut_file an optional .cube file; film_grain 0 to 20; loudness_lufs about -16. Keep these unless the user asks for a change.","music_prompt: one description of the music for the whole film (genre, mood, instruments, tempo); only used when options.music is true.","settings.video_engine is one of mm (MiniMax H3), wan21, wan22, ltx23, ltx25: keep it unless the user asks for a change. settings, options and advanced: keep the current values unless the user asks for a change. advanced lists every page control by its id."],
              story_brief:"",target_runtime_minutes:null,
              settings:Object.fromEntries(TS.map(t=>{const e=$(t[1]);return [t[0],e.type==="number"?+e.value:e.value];})),
              options:Object.fromEntries(TO.map(t=>[t[0],$(t[1]).checked])),
              music_prompt:$("mp").value.trim(),
-             consistency:{style_line:$("bst").value.trim(),character_bible:ch.length?ch:["Name: age, build, face, hair, clothing from head to toe, accessories; voice: ..."],global_sound:$("bsn").value.trim()},
+             consistency:{style_line:$("bst").value.trim(),character_bible:ch.length?ch:["Name: look; voice"],global_sound:$("bsn").value.trim()},
              reference_images:rf.some(r=>r.name||r.filename||r.description)?rf:[{name:"",filename:"",description:"",type:"character",angle_files:"",extra_angles:true}],
              scenes:sc,
              advanced:tplAdv()};}
-            /* AI-filled templates are often almost-JSON: inner double quotes left unescaped, smart quotes, comments,
-               trailing or missing commas, real line breaks inside text. Repair those before giving up. */
-            function jsonRepair(t){
-             /* _instructions is ignored on load and is where copied quotes break most often: drop it whole */
-             const ii=t.search(/"_instructions"\s*:/);
-             if(ii>=0){let jj=-1;["story_brief","target_runtime_minutes","settings","options","music_prompt","consistency","reference_images","scenes","advanced"].forEach(k=>{const m=new RegExp('"'+k+'"\\s*:',"g");m.lastIndex=ii+1;const r=m.exec(t);if(r&&(jj<0||r.index<jj))jj=r.index;});
-              if(jj>ii)t=t.slice(0,ii)+t.slice(jj);}
-             t=t.replace(/[\u201C\u201D\u201E\u201F\u2033]/g,'"').replace(/\u00A0/g," ");
-             let o="",s=false;const sig=()=>{const m=o.match(/(\S)\s*$/);return m?m[1]:"";};
-             for(let i=0;i<t.length;i++){const c=t[i];
-              if(s){
-               if(c==="\\"){o+=c+(t[i+1]||"");i++;continue;}
-               if(c==='"'){const m=t.slice(i+1).match(/^\s*(.)/),nx=m?m[1]:"";
-                if(nx===""||",:}]".includes(nx)){o+=c;s=false;}else o+='\\"';continue;}
-               if(c==="\n"){o+="\\n";continue;}if(c==="\r")continue;if(c==="\t"){o+="\\t";continue;}
-               o+=c;continue;}
-              if(c==="/"&&t[i+1]==="/"){while(i<t.length&&t[i]!=="\n")i++;o+="\n";continue;}
-              if(c==="/"&&t[i+1]==="*"){const e=t.indexOf("*/",i+2);i=e<0?t.length:e+1;continue;}
-              if(c==="}"||c==="]"){o=o.replace(/,\s*$/,"");o+=c;continue;}
-              if(c==='"'||c==="{"||c==="["){const p=sig();if(p==='"'||p==="}"||p==="]"||/[0-9el]/.test(p))o+=",";if(c==='"')s=true;o+=c;continue;}
-              o+=c;}
-             return o;}
-            function tplParse(t){
-             try{return JSON.parse(t);}catch(e0){
-              try{const d=JSON.parse(jsonRepair(t));d.__repaired=true;return d;}
-              catch(e1){const m=String(e0.message).match(/position (\d+)/),p=m?+m[1]:-1;
-               let where="";if(p>=0){const ln=t.slice(0,p).split("\n").length,line=t.split("\n")[ln-1]||"";where=" Line "+ln+": "+line.trim().slice(0,160);}
-               throw new Error("the file is not valid JSON and could not be repaired automatically ("+e0.message+")."+where+" Usually a double quote inside a text value, or the AI's answer was cut off. Ask the AI to return valid JSON with single quotes inside text, or fix that line.");}}}
             function tplLoad(txt){
              let t=txt.trim().replace(/^```[a-z]*\s*/i,"").replace(/```\s*$/,"");
              const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a<0||b<a)throw new Error("No JSON object found in the file.");
-             const d=tplParse(t.slice(a,b+1)),warn=[];if(d.__repaired)warn.push("the file was not valid JSON (unescaped quotes, comments or commas) and was repaired automatically; check the scene prompts");
+             const d=JSON.parse(t.slice(a,b+1)),warn=[];
              if(d.nodes&&d.links)throw new Error("this is a ComfyUI workflow, not a project template. Use Generate Template, have your AI fill it in, then upload that file.");
              const set=(id,v)=>{if(typeof v==="string"||(typeof v==="number"&&isFinite(v)))$(id).value=v;};
              const ck=(id,v)=>{if(typeof v==="boolean")$(id).checked=v;};
@@ -3350,7 +3321,7 @@ three-quarter: three-quarter view from above</textarea>
                addScene(String(x.prompt||""),dur,String(x.first_frame||""),sd);
                const c=[...document.querySelectorAll(".sc")].pop();
                c.querySelector(".sl").value=String(x.last_frame||"");c.querySelector(".slm").value=(x.long_scene==="split"||x.long_scene==="one")?x.long_scene:"";c.querySelector(".ssc").value=(x.scene_change==="soft"||x.scene_change==="hard")?x.scene_change:(x.hard_cut?"hard":"");
-               c.querySelector(".sdl").value=lines(x.dialogue);c.querySelector(".son").value=lines(x.on_screen);c.querySelector(".ssn").value=String(x.sound||"");
+               c.querySelector(".sdl").value=lines(x.dialogue);c.querySelector(".ssn").value=String(x.sound||"");
                {const cv=String(x.camera_view||"auto").toLowerCase(),sv=c.querySelector(".sv");sv.value=[...sv.options].some(o=>o.value===cv)?cv:"auto";}
                {try{syncShotSelectors();}catch(e){}const bs=c.querySelector(".sbs"),bv=String(x.baked_shot||"").toLowerCase();if(bs&&bv&&[...bs.options].some(o=>o.value===bv))bs.value=bv;}
                c.querySelector(".srr").value=Array.isArray(x.references)?x.references.join(","):String(x.references||"");c.querySelector(".stk").value=x.use_take==null||!isFinite(Number(x.use_take))?"":String(x.use_take);ns++;});}
@@ -3396,20 +3367,7 @@ three-quarter: three-quarter view from above</textarea>
             $("bFF").onclick=()=>dl("assemble_long_video.sh",ffscript(build()),"text/x-shellscript");
             $("bFin").onclick=()=>{const r=build();dl("finish_"+r.broot+(r.DR?"_draft":"")+".sh",ffscript(r),"text/x-shellscript");$("qMsg").textContent="Finishing script downloaded. Run it inside your ComfyUI output folder (needs ffmpeg). It reads scene files, or lossless PNG frames if you saved them, and writes a master plus one final encode.";};
             $("bTk").onclick=allTakes;
-            $("bFlag").onclick=()=>$("flagFile").click();
-            $("flagFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();
-             rd.onload=()=>{e.target.value="";const last={};
-              /* the log keeps growing across runs: the newest line for each clip file wins */
-              String(rd.result).split(/\r?\n/).forEach(l=>{const m=l.match(/Scene (\d+)(?: part \d+ of \d+)? \(file (\d+)\): (OK|FIXED|CHECK)/);if(m)last[+m[2]]={sc:+m[1],st:m[3]};});
-              const n=Object.keys(last).length,bad=[...new Set(Object.values(last).filter(v=>v.st!=="OK").map(v=>v.sc))].sort((a,b)=>a-b);
-              if(!n){$("qMsg").textContent="No Scene Guard lines found in that file. Pick ComfyUI/output/scene_guard_log.txt.";return;}
-              if(!bad.length){$("qMsg").textContent="All "+n+" clip(s) in the log passed. Nothing to re-render.";return;}
-              const tk=Math.max(1,parseInt($("tk").value,10)||1)+1;$("rl").value=bad.join(",");$("tk").value=tk;
-              document.querySelectorAll(".sc").forEach((c,i)=>{if(bad.includes(i+1))c.querySelector(".stk").value=tk;});
-              refresh();
-              $("qMsg").textContent="Flagged in the log: scene(s) "+bad.join(", ")+". Scenes to render, Take "+tk+" and their 'Use take' are set. Generate and queue the workflow, then run the finishing script. A soft-change scene right after a re-rendered one still starts from the old ending; if that join jumps, re-render it too. Start a fresh log (rename the old one) for each new project.";};
-             rd.readAsText(f);};
-            $("bDS").onclick=()=>{dl("dialogue_sheet.csv",dialogueSheet(),"text/csv");$("qMsg").textContent="Dialogue sheet downloaded: one row per line. Make one audio file per clip, named as in the put_audio_in_file column (long scenes split into parts get one file per part), with any text-to-speech tool; the finishing script mixes them in.";};
+            $("bDS").onclick=()=>{dl("dialogue_sheet.csv",dialogueSheet(),"text/csv");$("qMsg").textContent="Dialogue sheet downloaded: one row per line. Make one audio file per scene (dialogue/scene_NN.wav) with any text-to-speech tool and the finishing script mixes it in.";};
             $("bAud").onclick=()=>{const r=build(true);if(r.E.length){alert("Cannot generate the audio workflow:\n- "+r.E.join("\n- "));return;}dl(r.broot+"_audio_workflow.json",JSON.stringify(r.wf,null,2),"application/json");$("qMsg").textContent="Audio workflow downloaded (ACE-Step music, covers the whole film, fixed seeds). Run it separately; the finishing script mixes the tracks.";};
             $("bSeed").onclick=()=>{$("pseed").value=Math.floor(Math.random()*4294967295);$("qMsg").textContent="New project seed. Reference images, first frames and takes will all change; keep it fixed once you like the references.";refresh();};
             if($("pseed").value==="")$("pseed").value=Math.floor(Math.random()*4294967295);
