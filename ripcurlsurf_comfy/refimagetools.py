@@ -2,15 +2,13 @@
 refimagetools.py - ComfyUI custom nodes for reference pictures (package: ripcurlsurf_comfy).
 
 Put the whole folder  ripcurlsurf_comfy  (this file plus __init__.py) in  ComfyUI/custom_nodes/  and restart ComfyUI.
-It adds three nodes (category: image/reference):
+It adds two nodes (category: image/reference):
 
 A) Reference Photo Finish (remove painted look)   - see below
 B) Load Image (optional, falls back to original)  - loads a picture from ComfyUI/input by
    file name; if the file is not there yet it passes the FALLBACK image through instead of
    stopping the whole workflow. Used for manual angle pictures: add the files whenever you
    have them, until then the original reference stands in.
-C) Scene Anchor (identity-locked continuity)    - colour-matches a chained frame back to a
-   clean anchor frame so colour, skin tone and light do not creep from scene to scene.
 
 A) Reference Photo Finish
 
@@ -360,26 +358,34 @@ class SceneAnchor:
                                           l_amount=float(color_strength) * 0.5)
 
                 if identity_strength > 0:
+                    # A global colour shift of the skin areas toward the reference's skin colour. The old version blended
+                    # the reference's pixels in place; the reference is never aligned with the frame, so that averaged two
+                    # different pictures (mush and ghosting) at every join - one of the causes of the waxy look.
                     if user_mask is not None:
-                        um = user_mask if user_mask.ndim == 2 else user_mask[min(i, user_mask.shape[0] - 1)]
-                        m = self._resize_to(um[..., None], h, w)[..., 0]
+                        m = self._resize_to(user_mask[..., None], h, w)[..., 0]
                     else:
-                        m = self._skin_mask(ref0)
+                        m = self._skin_mask(out)
                         m = _blur(m[..., None], max(2.0, min(h, w) / 128.0))[..., 0]
                         m = np.clip(m * 2.0, 0.0, 1.0)
+                    rm = self._skin_mask(ref0)
                     out_lab = _rgb_to_lab(out)
                     ref_lab = _rgb_to_lab(ref0)
-                    amt = float(identity_strength) * np.clip(m, 0.0, 1.0)
-                    out_lab[..., 1] = out_lab[..., 1] * (1 - amt) + ref_lab[..., 1] * amt
-                    out_lab[..., 2] = out_lab[..., 2] * (1 - amt) + ref_lab[..., 2] * amt
-                    L_amt = amt * 0.5
-                    out_lab[..., 0] = out_lab[..., 0] * (1 - L_amt) + ref_lab[..., 0] * L_amt
-                    out_lab[..., 0] = np.clip(out_lab[..., 0], 0.0, 100.0)
-                    out = np.clip(_lab_to_rgb(out_lab), 0.0, 1.0)
+                    if m.sum() > 64 and rm.sum() > 64:
+                        sel = m > 0.5
+                        rsel = rm > 0.5
+                        d = [float(np.median(ref_lab[..., c][rsel]) - np.median(out_lab[..., c][sel])) for c in range(3)]
+                        d[0] = float(np.clip(d[0], -8.0, 8.0)) * 0.5
+                        d[1], d[2] = float(np.clip(d[1], -10.0, 10.0)), float(np.clip(d[2], -10.0, 10.0))
+                        amt = float(identity_strength) * np.clip(m, 0.0, 1.0)
+                        for c in range(3):
+                            out_lab[..., c] = out_lab[..., c] + amt * d[c]
+                        out_lab[..., 0] = np.clip(out_lab[..., 0], 0.0, 100.0)
+                        out = np.clip(_lab_to_rgb(out_lab), 0.0, 1.0)
 
                 if structure_strength > 0:
-                    s = float(structure_strength)
-                    big = max(8.0, min(h, w) / 24.0)
+                    # only the broadest light and colour (very large blur), so it can never paint the reference in
+                    s = float(structure_strength) * 0.5
+                    big = max(16.0, min(h, w) / 8.0)
                     lo_out = _blur(out, big)
                     lo_ref = _blur(ref0, big)
                     hi_out = out - lo_out

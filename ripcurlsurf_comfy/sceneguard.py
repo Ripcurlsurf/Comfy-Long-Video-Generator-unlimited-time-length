@@ -13,28 +13,43 @@ model not to do this. This node checks the finished frames and enforces what it 
                       found and everything after it is removed.
   3. FROZEN / REPLAY- it also measures (and, if you choose, cuts off) a frozen ending and
                       a replayed action: the model doing the action once and then
-                      repeating it.
+                      repeating it. A clip that hardly moves at all ("almost no movement",
+                      for example one made between two nearly identical pictures) is
+                      reported too, and loses against a try that moves.
+     RETURN         - a clip that moves away from its opening picture and comes back to almost the same
+                      picture at the end ("returned to its opening picture") is always cut where the way back
+                      starts: otherwise the next scene would start on the picture this one started on, and the
+                      film would show the same picture again and again.
   4. BEST OF N      - connect up to 3 more tries of the same scene (images_b, images_c,
                       images_d, each rendered with another seed). The try with the longest
                       clean stretch is used; the rest are dropped.
-  5. REPORT         - one line per scene (also appended to ComfyUI/output/scene_guard_log.txt)
-                      with the planned and real frame counts and every problem found.
+  5. QUALITY        - with a gold frame connected (quality_anchor), every try is also scored for picture
+                      quality (texture, saturation, grain against the gold frame, and how much it softens from
+                      its first frame to its last). Among tries with the same problems, the best-looking one wins.
+  6. REPORT         - one line per scene (also appended to ComfyUI/output/movie_log.txt, the one log file of
+                      the ripcurlsurf nodes) with the planned and real frame counts and every problem found.
 
-Identity is only checked roughly (skin colour against the connected reference): an action
-repeated from a different camera angle, or a face whose shape changes, is not detected. It is plain numpy image
+It cannot see identity: a person whose face slowly changes inside one shot, or an action
+repeated from a different camera angle, is not detected. It is plain numpy image
 statistics (no model, no extra installs).
 """
-import os
-import time
+import math
 
 import numpy as np
 import torch
 
+try:                                   # quality scoring of tries (optional: Scene Guard works without it)
+    from .qualitylock import clip_quality as _clip_quality
+except Exception:                      # pragma: no cover - loaded outside the package or module missing
+    _clip_quality = None
+try:                                   # the one log file (output/movie_log.txt)
+    from .qualitylock import movie_log as _movie_log
+except Exception:                      # pragma: no cover
+    _movie_log = None
+
 _GRID = 32
 KINDS_CUT = ("hard cut", "gradual change to a different scene")
-# Only these are cut off when trim_on asks for it. Drift is reported and used to rank tries,
-# but never trims a clip: cutting at the worst-drift frame removed good footage.
-KINDS_TRIM = ("frozen ending", "replayed action")
+RETURN = "returned to its opening picture"     # always cut off, like a cut (see _returns_to_start)
 
 
 def _features(frames):
@@ -89,28 +104,25 @@ def drift_to_reference(frames, ref_frames, fps):
     base = sig[: max(1, min(sig.shape[0], int(round(fps))))].mean(axis=0)
     refv = ref.mean(axis=0) if ref is not None and ref.size else base
 
-    def _d(a, b, skin):
-        d = 0.15 * abs(a[6] - b[6]) + 0.05 * abs(a[7] - b[7])
-        if skin:  # compare skin colour only when both pictures actually show skin
-            d += 0.5 * np.abs(a[0:3] - b[0:3]).mean() + 0.5 * np.abs(a[3:6] - b[3:6]).mean()
-        return d
+    def _d(a, b):
+        return (0.5 * np.abs(a[0:3] - b[0:3]).mean()
+                + 0.5 * np.abs(a[3:6] - b[3:6]).mean()
+                + 0.15 * abs(a[6] - b[6])
+                + 0.05 * abs(a[7] - b[7]))
 
-    rs = refv[6] > 0.002
-    per = np.array([_d(sig[i], refv, rs and sig[i, 6] > 0.002) for i in range(sig.shape[0])], dtype=np.float32)
+    per = np.array([_d(sig[i], refv) for i in range(sig.shape[0])], dtype=np.float32)
     k = max(1, int(round(fps * 0.5)))
     score = float(per[k:].max()) if per.shape[0] > k else float(per.max())
     return score, per
 
 
-def _frozen_tail(small, fps):
-    """Index where a frozen ending starts, or None.
+def _frozen_mask(small, fps):
+    """Per frame: True where the picture stands still.
 
     A frame counts as frozen when its change over 1 frame is tiny AND the change over 4
     frames is not bigger than the change over 1 frame (pure noise does not grow with the
     gap; real motion does)."""
     n = small.shape[0]
-    if n < 12:
-        return None
     m1 = np.zeros(n, dtype=np.float64)
     m4 = np.zeros(n, dtype=np.float64)
     m1[1:] = np.abs(small[1:] - small[:-1]).mean(axis=(1, 2, 3))
@@ -118,10 +130,65 @@ def _frozen_tail(small, fps):
     m4[:4] = m4[4]
     m1[0] = m1[1]
     w = max(4, int(round(fps / 3.0)))
-    ker = np.ones(w) / w
-    W1 = np.convolve(m1, ker, mode="same")
-    W4 = np.convolve(m4, ker, mode="same")
+    W1 = _smooth(m1, w)
+    W4 = _smooth(m4, w)
     froz = (W1 < 0.004) & (W4 < 1.5 * W1 + 0.0003)
+    return froz, w
+
+
+def _smooth(x, w):
+    """Moving average of width w; the ends are padded with their own values (zero padding would make the first and
+    last few frames look still)."""
+    p = np.pad(x, (w // 2, w - 1 - w // 2), mode="edge")
+    return np.convolve(p, np.ones(w) / w, mode="valid")
+
+
+def _moving_start(small, fps):
+    """Index where a clip that starts standing still begins to move (0 when it moves from the start). The still frames
+    before it are the clip's first picture, so a fitted clip can drop them and still start on that picture."""
+    n = small.shape[0]
+    if n < 12:
+        return 0
+    froz, w = _frozen_mask(small, fps)
+    j = 0
+    while j < n and froz[j]:
+        j += 1
+    if j < max(3, w // 2) or j > n - fps:
+        return 0
+    return max(0, j - w // 2)
+
+
+def _moving_end(small, fps):
+    """Index where the clip stops moving for good (its still ending starts), or n when it moves to the end.
+    Used to fit a story clip: the model reaches its last picture early and then holds it."""
+    n = small.shape[0]
+    if n < 12:
+        return n
+    froz, w = _frozen_mask(small, fps)
+    j = n
+    while j > 0 and froz[j - 1]:
+        j -= 1
+    if n - j < max(3, w // 2) or j <= int(fps * 0.5):
+        return n
+    return max(1, j - w // 2)
+
+
+STILL_CLIP = 0.7               # 70% or more of the clip standing still = "almost no movement"
+
+
+def _still_share(small, fps):
+    """Share of the clip (0-1) in which the picture stands still."""
+    if small.shape[0] < 12:
+        return 0.0
+    return float(np.mean(_frozen_mask(small, fps)[0]))
+
+
+def _frozen_tail(small, fps):
+    """Index where a frozen ending starts, or None."""
+    n = small.shape[0]
+    if n < 12:
+        return None
+    froz, w = _frozen_mask(small, fps)
     j = n
     while j > 0 and froz[j - 1]:
         j -= 1
@@ -131,6 +198,35 @@ def _frozen_tail(small, fps):
         if float(np.mean(before)) < 0.5:
             return max(1, j - w // 2)
     return None
+
+
+def _returns_to_start(small, fps):
+    """Index where the clip starts going back to its opening picture, or None.
+
+    Measured on real MiniMax clips (16 Oct 2026 film): six continuing scenes moved far from their first frame
+    (0.32-0.36 on this scale) and ended within 0.03-0.09 of it, the way back taking the last 0.6-1.4 s; clips that do
+    not return end at 0.13 or more, and talking shots that hardly move never get far (below 0.13). The way back is
+    usually a wipe: someone walks across the lens and the opening picture is already behind them. So the cut is
+    placed half a second before the last frame that is still within 15% of the farthest point of the last 3 seconds,
+    which is where that walk past the lens begins."""
+    n = small.shape[0]
+    if n < max(12, int(2 * fps)):
+        return None
+    d0 = np.abs(small - small[:1]).mean(axis=(1, 2, 3))
+    mx = float(d0.max())
+    k = max(1, int(round(fps / 8.0)))
+    end = float(d0[-k:].mean())
+    if mx < 0.15 or end > 0.10 or end > 0.3 * mx:
+        return None
+    w = max(2, int(round(3 * fps)))
+    peak = float(d0[-w:].max())
+    if peak < 0.6 * mx:                 # it came back long before the end: measure from the clip's farthest point
+        peak = mx
+    far = np.nonzero(d0 >= 0.85 * peak)[0]
+    j = int(far[-1]) + 1 - int(round(0.5 * fps))
+    if j >= n - 1 or j < int(fps):
+        return None
+    return j
 
 
 def _replay(small, fps):
@@ -218,9 +314,16 @@ def analyse(frames, fps, sensitivity=5, drift_limit=0.0, min_keep_seconds=1.0, e
         fz = _frozen_tail(small, fps)
         if fz is not None:
             events.append((fz, "frozen ending"))
+        else:
+            out["still"] = _still_share(small, fps)
+        out["moving_end"] = _moving_end(small, fps)
+        out["moving_start"] = _moving_start(small, fps)
         rp = _replay(small, fps)
         if rp is not None:
             events.append((rp, "replayed action"))
+        rt = _returns_to_start(small, fps)
+        if rt is not None:
+            events.append((rt, RETURN))
     events.sort()
     out["events"] = events
     if events:
@@ -243,16 +346,18 @@ def _choose_range(r, fps, min_keep_seconds, trim_extra):
     """Frame range [a,b) to keep for one analysed clip: the longest single shot,
     then (when asked) cut off a frozen ending or replay at the end of it."""
     n = r["n"]
-    use = [e for e in r["events"] if e[1] in KINDS_CUT or (trim_extra and e[1] in KINDS_TRIM)]
+    # identity/location drift is reported and used to rank tries; it is never a cut point (it marks the frame of the
+    # largest drift, which can be anywhere in the clip and used to truncate the clip there)
+    cuttable = lambda k: k in KINDS_CUT or k == RETURN or (trim_extra and k in ("frozen ending", "replayed action"))
+    use = [e for e in r["events"] if cuttable(e[1])]
     if not use:
         return 0, n, False
     segs = _segments(r, trim_extra)
     a, b = max(segs, key=lambda s: (s[1] - s[0], -s[0]))
-    if trim_extra:
-        for i, k in r["events"]:
-            if k in KINDS_TRIM and a < i < b:
-                b = i
-                break
+    for i, k in r["events"]:
+        if k not in KINDS_CUT and cuttable(k) and a < i < b:
+            b = i
+            break
     return a, b, a != 0
 
 
@@ -271,6 +376,20 @@ def _slice_audio(audio, a_s, b_s, total_s, pad_to_total):
         elif cut.shape[-1] > want:
             cut = cut[..., :want]
     return {"waveform": cut, "sample_rate": sr}
+
+
+def _retime(kept, target):
+    """Play a clip faster or slower so it has exactly `target` frames (neighbouring frames are blended)."""
+    arr = kept.detach().cpu().numpy() if hasattr(kept, "detach") else kept.cpu().numpy()
+    k = arr.shape[0]
+    if k <= 1 or target == k or target < 1:
+        return kept
+    pos = np.linspace(0.0, k - 1, target)
+    lo = np.floor(pos).astype(np.int64)
+    hi = np.minimum(lo + 1, k - 1)
+    wgt = (pos - lo).astype(np.float32).reshape(-1, 1, 1, 1)
+    out = arr[lo] * (1.0 - wgt) + arr[hi] * wgt
+    return torch.from_numpy(out.astype(np.float32))
 
 
 def _slow_to_fit(kept, target):
@@ -300,8 +419,11 @@ class SceneGuard:
                 "drift_limit": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
                                           "tooltip": "Cut the clip when colours moved this far from its opening frames. 0 = off."}),
                 "min_keep_seconds": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 30.0, "step": 0.1}),
-                "after_cut": (["hold_last_frame", "slow_to_fit", "trim"],
-                              {"tooltip": "What to do when a bad ending is removed."}),
+                "after_cut": (["hold_last_frame", "slow_to_fit", "trim", "fit_to_length"],
+                              {"tooltip": "What to do when a bad ending is removed. fit_to_length (story clips, rendered "
+                                          "longer than planned): a still start and a still ending are cut off; a clip "
+                                          "that moves for longer than planned keeps its normal speed and runs longer, "
+                                          "one that stopped early is slowed (at most 1.5x) to fill the planned length."}),
                 "trim_on": (["cuts only", "cuts, frozen endings and replays"],
                             {"tooltip": "Whether frozen endings and replays are also cut off (they are always measured)."}),
                 "planned_frames": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 1,
@@ -315,7 +437,8 @@ class SceneGuard:
                 "images_b": ("IMAGE",), "audio_b": ("AUDIO",),
                 "images_c": ("IMAGE",), "audio_c": ("AUDIO",),
                 "images_d": ("IMAGE",), "audio_d": ("AUDIO",),
-                "reference": ("IMAGE", {"tooltip": "The scene's first frame (or a canonical reference). Each try is scored for drift from it; the least-drifted try wins."}),
+                "reference": ("IMAGE", {"tooltip": "Canonical character/location reference. Each try is scored for drift; the least-drifted try wins."}),
+                "quality_anchor": ("IMAGE", {"tooltip": "The film's gold frame (Quality Anchor). Each try is scored for picture quality against it; the best-looking try wins among tries with the same problems."}),
             },
         }
 
@@ -326,7 +449,7 @@ class SceneGuard:
 
     def guard(self, images, fps, label, sensitivity, drift_limit, min_keep_seconds, after_cut, trim_on,
               planned_frames, write_log, drift_threshold=0.35, audio=None, images_b=None, audio_b=None,
-              images_c=None, audio_c=None, images_d=None, audio_d=None, reference=None):
+              images_c=None, audio_c=None, images_d=None, audio_d=None, reference=None, quality_anchor=None):
         fps = float(fps) if fps else 24.0
         trim_extra = trim_on != "cuts only"
         cands = [(images, audio)]
@@ -334,10 +457,23 @@ class SceneGuard:
             if im is not None:
                 cands.append((im, au))
         ref_arr = reference.detach().cpu().numpy() if reference is not None else None
+        qa_arr = quality_anchor.detach().cpu().numpy() if quality_anchor is not None else None
+        qnote = None
+        if qa_arr is not None and _clip_quality is None:
+            qnote = "quality scoring unavailable (qualitylock.py did not load)"
         res = []
         for im, au in cands:
             arr = im.detach().cpu().numpy() if hasattr(im, "detach") else im.cpu().numpy()
+            if arr.ndim != 4 or arr.shape[0] == 0:
+                raise ValueError("Scene Guard: a try has shape %s; expected [frames, height, width, channels]" % (tuple(arr.shape),))
+            if not np.isfinite(arr[:: max(1, arr.shape[0] // 8)]).all():
+                arr = np.nan_to_num(arr, nan=0.0, posinf=1.0, neginf=0.0)
             r = analyse(arr, fps, sensitivity, drift_limit, min_keep_seconds, True)
+            if qa_arr is not None and _clip_quality is not None:
+                try:
+                    r["q"] = _clip_quality(arr, qa_arr)
+                except Exception as e:          # quality scoring must never stop a render
+                    qnote = "quality scoring failed (%s)" % e
             if ref_arr is not None and drift_threshold > 0:
                 d, per = drift_to_reference(arr, ref_arr, fps)
                 r["drift"] = d
@@ -346,21 +482,65 @@ class SceneGuard:
                     r["events"].sort()
             res.append(r)
 
+        bucket = max(1, int(round(fps / 2.0)))
+        P = int(planned_frames) if planned_frames and planned_frames > 0 else 0
+        # fit_to_length: a story clip rendered longer than planned. Reaching its last picture early and holding it is
+        # expected (that still ending is cut off), so it is not a problem; the try whose moving part is closest to the
+        # planned length plays closest to normal speed and wins.
+        FIT = after_cut == "fit_to_length" and P > 0
+
+        def _problems(rr):
+            return [e for e in rr["events"] if not (FIT and e[1] == "frozen ending")]
+
         def _key(k):
             seg = max(b - a for a, b in _segments(res[k], trim_extra))
-            return (len(res[k]["events"]), -seg, res[k].get("drift", 0.0), k)
+            q = res[k].get("q")
+            qflag = 1 if (q and (q["score"] < 55.0 or q["texture_end"] < 0.7)) else 0
+            qpen = round(q["penalty"], 2) if q else 0.0
+            # problems first, then clean length (in half-second steps), then picture quality
+            still = 1 if res[k].get("still", 0.0) >= STILL_CLIP else 0
+            # planned_frames may be 0 (no forced length): only a fitted clip measures its moving part against the plan
+            mv = max(res[k].get("moving_end", res[k]["n"]) - res[k].get("moving_start", 0), 1) / float(P) if FIT else 1.0
+            dev = round(abs(math.log(min(mv, 1.0))), 1) if FIT else 0.0
+            return (len(_problems(res[k])) + still, dev, -(seg // bucket), qflag, qpen, res[k].get("drift", 0.0), k)
         order = sorted(range(len(cands)), key=_key)
         pick = order[0]
         im, au = cands[pick]
         r = res[pick]
         n = r["n"]
         a, b, fb = _choose_range(r, fps, min_keep_seconds, trim_extra)
-        P = int(planned_frames) if planned_frames and planned_frames > 0 else 0
         target = P if P else n
         notes = []
+        if FIT:
+            me = int(r.get("moving_end", n))
+            b = max(a + 2, min(b, me))
+            ms = int(r.get("moving_start", 0))
+            a0 = a
+            if ms > a and ms < b - 2:
+                a = ms
         kept = im[a:b] if (a, b) != (0, n) else im
         kn = b - a
-        if kn < target:
+        if FIT:
+            # never faster than normal: a clip that moves longer than planned keeps its natural speed and simply runs
+            # longer (speeding it up looks rushed); a clip that stopped early fills the planned time slowed at most 1.5x
+            f = kn / float(P)
+            moved = ("a still ending from %.2f s was cut off" % (me / fps) if me < n else "it kept moving to the end") + (
+                "; a still start of %.2f s was cut off" % ((a - a0) / fps) if a > a0 else "")
+            if f >= 1.0:
+                notes.append("fitted: %s; it plays at normal speed, %.2f s (%.2f s longer than planned)" % (
+                    moved, kn / fps, (kn - P) / fps))
+                target = kn
+            elif f < 2.0 / 3.0:
+                want = max(2, int(kn * 1.5))
+                kept = _retime(kept, want)
+                kept = torch.cat([kept, kept[-1:].repeat(P - want, 1, 1, 1)], dim=0)
+                notes.append("fitted: %s; the moving part was only %.2f s, so it plays at 0.67x and its last frame is "
+                             "held to fill the planned %.2f s" % (moved, kn / fps, P / fps))
+            else:
+                kept = _retime(kept, P)
+                notes.append("fitted: %s; the moving part (%.2f s) plays at %.2fx speed to fill the planned %.2f s" % (
+                    moved, kn / fps, f, P / fps))
+        elif kn < target:
             if after_cut == "slow_to_fit" and kn > 1:
                 want = min(target, int(kn * 1.5))
                 kept = _slow_to_fit(kept, want)
@@ -383,7 +563,9 @@ class SceneGuard:
         # when scenes are joined.
         aud = None
         if au is not None:
-            aud = _slice_audio(au, a / fps, b / fps, out_n / fps, True)
+            # fitted clips keep their sound at normal speed (ambience and effects; story clips with speech are not
+            # fitted), taken from the same start for the planned length
+            aud = _slice_audio(au, a / fps, (a + out_n) / fps if FIT else b / fps, out_n / fps, True)
         else:
             other = next((x for _, x in cands if x is not None), None)
             if other is not None:
@@ -400,32 +582,46 @@ class SceneGuard:
             parts.append("tries: " + ", ".join(
                 "#%d %s" % (k + 1, ("%d clean frames" % min(res[k]["good_end"], res[k]["n"]))
                             + ("" if not res[k]["events"] else " (" + res[k]["events"][0][1] + ")")
-                            + ("" if "drift" not in res[k] else " drift %.2f" % res[k]["drift"]))
+                            + (" (almost no movement)" if res[k].get("still", 0.0) >= STILL_CLIP else "")
+                            + (" moves for %.1f s" % (res[k].get("moving_end", res[k]["n"]) / fps) if FIT else "")
+                            + ("" if "drift" not in res[k] else " drift %.2f" % res[k]["drift"])
+                            + ("" if "q" not in res[k] else " quality %d" % round(res[k]["q"]["score"])))
                 for k in range(len(cands))) + " -> using #%d" % (pick + 1))
-        if r["events"]:
-            parts.append("problems: " + "; ".join("%s at frame %d (%.2f s)" % (k, i, i / fps) for i, k in r["events"][:4]))
+        probs = _problems(r)
+        if probs:
+            parts.append("problems: " + "; ".join("%s at frame %d (%.2f s)" % (k, i, i / fps) for i, k in probs[:4]))
+        still = r.get("still", 0.0) >= STILL_CLIP
+        if still:
+            parts.append("almost no movement: the picture stands still for %d%% of the clip" % round(100 * r["still"]))
         if "drift" in r:
             parts.append("drift score %.2f (threshold %.2f)" % (r["drift"], drift_threshold))
+        if "q" in r:
+            parts.append("picture quality %d of 100 (texture %.2f -> %.2f of gold)%s" % (
+                round(r["q"]["score"]), r["q"]["texture_start"], r["q"]["texture_end"],
+                (": " + "; ".join(r["q"]["flags"])) if r["q"]["flags"] else ""))
+        if qnote:
+            parts.append(qnote)
         if (a, b) != (0, n):
             parts.append("kept frames %d-%d" % (a, b))
         if fb:
             parts.append("the longest single shot was kept")
         parts += notes
-        acted = any((k in KINDS_CUT or (trim_extra and k in KINDS_TRIM)) for _, k in r["events"])
-        status = "OK" if not r["events"] else ("FIXED" if acted else "CHECK")
+        acted = any((k in KINDS_CUT or k == RETURN or (trim_extra and k in ("frozen ending", "replayed action")))
+                    for _, k in probs)
+        status = "OK" if not (probs or still) else ("FIXED" if acted else "CHECK")
+        qbad = bool(r.get("q") and (r["q"]["score"] < 55.0 or r["q"]["texture_end"] < 0.7))
+        if qbad and status == "OK":
+            status = "CHECK"
         report = "%s: %s | planned %s frames, got %d, output %d (%.2f s)%s" % (
             label, status, P if P else "-", n, out_n, out_n / fps, (" | " + " | ".join(parts)) if parts else "")
-        if r["events"]:
+        if probs or qbad:
             report += " | re-render this scene with a new take number or more tries"
+        elif still:
+            report += (" | if this shot should move: describe more action (or a clearer last frame), or render it again "
+                       "with more tries")
         print("[SceneGuard] " + report)
-        if write_log:
-            try:
-                import folder_paths
-                p = os.path.join(folder_paths.get_output_directory(), "scene_guard_log.txt")
-                with open(p, "a", encoding="utf-8") as fh:
-                    fh.write(time.strftime("%Y-%m-%d %H:%M:%S") + " | " + report + "\n")
-            except Exception:
-                pass
+        if write_log and _movie_log is not None:
+            _movie_log("SceneGuard", label, status, report)
         return (kept, aud, report, out_n)
 
 NODE_CLASS_MAPPINGS = {"SceneGuard": SceneGuard}
