@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="app-version" content="2026.10.23.1">
+        <meta name="app-version" content="2026.10.24.3">
         <title>Minimax-H3 ComfyUI Local Workflow Generator</title>
         <style>
             * {
@@ -1508,8 +1508,9 @@ three-quarter: three-quarter view from above</textarea>
                             clip)</label>
                         </div>
                         <div class="cb" data-eng="mm">
-                            <input type="checkbox" id="sage" checked><label for="sage">Sage Attention (needs KJNodes +
-                            sageattention installed)</label>
+                            <input type="checkbox" id="sage"><label for="sage">Sage Attention (needs KJNodes + the
+                            sageattention Python package in ComfyUI's venv; the whole run fails with "No module named
+                            'sageattention'" when it is missing)</label>
                         </div>
                         <div class="cb" style="display:none">
                             <input type="checkbox" id="sv" checked disabled><label for="sv">Save individual scene MP4s
@@ -5243,8 +5244,8 @@ three-quarter: three-quarter view from above</textarea>
              lun:f=>/ltx/.test(f)&&!/vae|projection/.test(f),lt1:f=>/gemma/.test(f),lt2:f=>/ltx.*projection/.test(f),lvae:f=>/ltx.*video.*vae|ltx.*vae/.test(f),upm:f=>upScale(f)>=2};
             const IREQ={qwen:{un:f=>/qwen_image_2\.1/.test(f)&&!/vae/.test(f),te:f=>/qwen3[-_ ]?vl/.test(f)&&/8b/.test(f),vae:f=>/qwen_image_2\.1.*vae|qwen_image_vae/.test(f)},
              flux2:{un:f=>/flux[-_.]?2/.test(f)&&!/vae|lora/.test(f),te:f=>/mistral/.test(f),vae:f=>/flux[-_.]?2.*vae/.test(f)&&!/small/.test(f)},
-             zimage:{un:f=>/z[-_ ]?image/.test(f)&&!/vae|lora/.test(f),te:f=>/qwen[-_ ]?3[-_ ]?4b/.test(f),vae:f=>/^ae\.|[-_]ae\.|z[-_ ]?image.*vae|flux1.*vae/.test(f)},
-             moss:{un:f=>/moss/.test(f)&&!/vae|lora/.test(f),te:f=>/qwen[-_ ]?3[-_.]?5/.test(f)&&/9b/.test(f),vae:f=>/flux[-_.]?2.*vae/.test(f)}};
+             zimage:{un:f=>/z[-_ ]?image/.test(f)&&!/vae|lora/.test(f),te:f=>/qwen[-_ .]?3[-_. ]?4b/.test(f),vae:f=>/^ae\.|[-_]ae\.|z[-_ ]?image.*vae|flux1.*vae/.test(f)},
+             moss:{un:f=>/moss/.test(f)&&!/vae|lora/.test(f),te:f=>/qwen[-_ ]?3[-_.]?5/.test(f)&&/9b/.test(f),vae:f=>/flux[-_.]?2.*vae|full_encoder_small_decoder/.test(f)}};
             const _ireq=()=>{const e=document.getElementById("ie");return IREQ[e?e.value:"qwen"]||IREQ.qwen;};
             const upScale=f=>{const m=mbase(f).match(/(?:^|[^a-z0-9])([1-8])x|x([1-8])(?![0-9])/);return m?+(m[1]||m[2]):0;};
             const upPick=want=>{const k=parseInt($("ups").value,10)||2;return modBest(["upscale_models"],want,f=>upScale(f)===k)||modBest(["upscale_models"],want,MREQ.upm)||modBest(["upscale_models"],want,null);};
@@ -5590,6 +5591,9 @@ three-quarter: three-quarter view from above</textarea>
              if((RG&&RL.length)||JF){if(IE==="moss")W.push("MOSS-Image needs a ComfyUI from October 2026 or later (CLIPLoader type moss_image, SkipLayerGuidanceDiTSimple). If the Image Text Encoder node shows moss_image in red, update ComfyUI. MOSS-Image is text only: reference pictures and the previous last frame are described in words, not shown to it.");
               if(IE==="flux2"||IE==="zimage"||IE==="moss")W.push(IEN[IE]+" nodes follow ComfyUI's standard template layout and are unverified against your install. If a node is showing in red, you need to change it manually in the workflow: install the missing node pack (ComfyUI Manager > Install Missing Custom Nodes), or pick the correct model file or node name in that node.");
               if(lr.length&&IE==="h3")W.push("Image LoRAs are ignored by the MiniMax H3 engine.");}
+             if((IE==="zimage"||IE==="moss")&&RA.some(r=>r.f)){const nf=RA.filter(r=>r.f).map(r=>r.n||r.f);
+              W.push(IEN[IE]+" cannot look at pictures: the reference file(s) "+nf.join(", ")+" are only used by the Scene Anchor colour lock. Faces, clothes and places come from the text descriptions. For pictures that are followed, pick Qwen Image 2.1 or Flux 2 as the image model.");}
+             if((IE==="zimage"||IE==="moss")&&RA.some(r=>r.bk||($("rang").checked&&r.x)))W.push(IEN[IE]+" cannot take an input picture, so baked shots and extra angles are made from the text alone and will not match the original reference. Untick Bake / Multi-angle references, or use Qwen Image 2.1 or Flux 2.");
              /* Angle and baked pictures are edits of a finished picture. Quality and style words (sharp focus, fine detail,
                 vibrant, crisp ...) would be applied a second time and pile up into an over-sharpened, painted look, so these
                 prompts ask to match the original's look instead. REFOUT collects every generated reference picture so the
@@ -5715,7 +5719,7 @@ three-quarter: three-quarter view from above</textarea>
               else if(mode==="name"){m=list.map(o=>({o:o,p:named(o)})).filter(x=>x.p>=0||sel.includes(String(x.o.i+1))||(x.o.r.n&&sel.includes(x.o.r.n.toLowerCase()))).sort((a,b)=>(a.p<0?-1:a.p)-(b.p<0?-1:b.p)).map(x=>x.o);}
               else m=list;
               if(mode!=="list"&&CAPR>0&&m.length>CAPR){const dr=m.slice(CAPR).map(o=>o.r.n||("reference "+(o.i+1)));m=m.slice(0,CAPR);if(!rdrop.has(s.gi)){rdrop.add(s.gi);W.push("Scene "+(s.gi+1)+": "+dr.join(", ")+" not linked because 'Most references in one scene' is "+CAPR+". Set it to 0 to link every reference.");}}
-              try{s.el.querySelector(".rst").textContent=RG||RM?("Pictures connected: "+(m.map(o=>o.r.n||("Reference "+(o.i+1))).join(", ")||"none")):"";}catch(e){}
+              try{s.el.querySelector(".rst").textContent=RG||RM?((IE==="zimage"||IE==="moss")?("Described in words only ("+IEN[IE]+" cannot see pictures): "+(m.map(o=>o.r.n||("Reference "+(o.i+1))).join(", ")||"none")):("Pictures connected: "+(m.map(o=>o.r.n||("Reference "+(o.i+1))).join(", ")||"none"))):"";}catch(e){}
               const lk=m.map(o=>o.i+1).join(",")||"none",ga=refLog[lk]=refLog[lk]||[];if(ga[ga.length-1]!==s.gi+1)ga.push(s.gi+1);
               if(!AV&&!RA.some(r=>r.bk&&r.bkd&&r.bkd.trim()))return m;
               const v=viewOf(s),shot=(s.bs||"").trim().toLowerCase(),out=[];let vm=0,usedShot=null;
@@ -6136,6 +6140,10 @@ three-quarter: three-quarter view from above</textarea>
                "fail","Quality lock is off: nothing measures or corrects the look from scene to scene, so it can slide into a soft or cartoon look.",()=>{$("ql").checked=true;});
               if(STB){const nF=S.filter(q=>KP[q.gi]&&KP[q.gi].F).length,nL=S.filter(q=>KP[q.gi]&&KP[q.gi].L).length;
                chk(nF+nL>0,"Story builder: "+nF+" of "+S.length+" clip(s) start on a story frame and "+nL+" end on one ("+STMADE+" picture(s) made in this run"+(STLOAD?", "+STLOAD+" loaded from output/story":"")+").","warn","Story builder is on, but no scene has a first or last frame: tick them on the scene cards, or use 'Every scene: first + last frame'.",()=>{document.querySelectorAll(".sc").forEach(c=>{c.querySelector(".sff").checked=true;c.querySelector(".slf").value="new";});});
+               if(stUseRef&&RA.length){const noF=S.filter(q=>!(KP[q.gi]&&KP[q.gi].F));const ids=[...new Set(noF.map(q=>q.gi+1))];
+                S.forEach(q=>{const k=KP[q.gi];if(k&&k.F&&k.F.inh!==undefined){try{const r=kres(q.gi,"F"),src=S0[r.gi];q.el.querySelector(".rst").textContent="Pictures connected: through scene "+(r.gi+1)+"'s "+(r.role==="L"?"last":"first")+" frame ("+(pick(src).map(o=>o.r.n||("Reference "+(o.i+1))).join(", ")||"none")+"), which this clip starts on.";}catch(e){}}});
+                noF.forEach(q=>{try{q.el.querySelector(".rst").textContent="Pictures connected: none. This clip starts on the previous clip's last video frame, which the image model never sees, so the reference pictures cannot reach it. Tick First frame (hard change) or give the previous scene a Last frame (soft change).";}catch(e){}});
+                chk(!ids.length,"References reach every clip: each starts on a story picture made with the reference pictures.","warn","References reach only "+(S.length-noF.length)+" of "+S.length+" clip(s). Scene(s) "+(ids.length>12?ids.slice(0,12).join(", ")+" ...":ids.join(", "))+" start on the previous clip's last video frame, which "+IEN[IE]+" never sees, so the reference faces, clothes and places cannot hold there and the film drifts to whatever the video model draws. Fix: every hard-change scene gets a First frame and every scene before a soft change gets a Last frame (dialogue scenes before a soft change must end on a picture too; describe that ending in their Last frame box).",()=>{const r=stCoverAll();$("genMsg").textContent="Story frames added: "+r[0]+" first frame(s), "+r[1]+" last frame(s). Generate again.";});}
                chk(IE!=="h3","Story frames are made with "+IEN[IE]+".","fail","Story builder needs an image model: 'Same as video model' cannot make a last frame from a first frame. Pick Qwen Image 2.1.",()=>{$("ie").value="qwen";$("ie").dispatchEvent(new Event("change"));});
                if(nL&&!MMV)qc("warn","Last frames need the MiniMax H3 video model: "+VEN+" does not end on them, so the next scene starts on a picture the video did not reach (a jump at the cut). Use MiniMax H3, or first frames only.",()=>{$("ve").value="mm";$("ve").dispatchEvent(new Event("change"));});
                if($("stref").checked&&$("refon").checked&&RA.length)chk(stCanRef,"Story frames are kept in line with the reference pictures.","warn",IEN[IE]+" cannot take reference pictures, so the story frames follow the text only. Pick Qwen Image 2.1 or Flux 2.",()=>{$("ie").value="qwen";$("ie").dispatchEvent(new Event("change"));});
@@ -6206,6 +6214,7 @@ three-quarter: three-quarter view from above</textarea>
                /* -- video model and sampling */
                {const st=parseInt($("steps").value,10);if(!(st>0))qc("fail","Video steps is "+($("steps").value||"empty")+": the video sampler needs at least 1 step, so every clip would fail. 20 is the MiniMax H3 value.",setv("steps",turbo?4:20));}
                if(!(dnv>=0.999))qc(dnv>0&&dnv<=1?"warn":"fail","Denoise is "+$("dn").value+": every new clip must be drawn completely (1.0); lower values leave it noisy and unfinished.",setv("dn","1.0"));
+               if($("sage").checked)qc("tip","Sage Attention is on: it needs the sageattention package inside ComfyUI's own Python. If the run stops at the first scene with \"No module named 'sageattention'\", untick it (or install the package; the KJNodes patch node has no fallback).",setv("sage",false));
                {const sm=$("smp").value,bad=/ancestral|_sde|dpm_fast|dpm_adaptive|^lms$|^dpm_2|ddpm|^lcm$/.test(sm)&&!(turbo&&sm==="lcm");
                 chk(!bad,"Video sampler "+sm+".","warn","Video sampler '"+sm+"' adds random noise at every step or is unstable at "+(turbo?4:20)+" steps: detail flickers and faces change inside the clip. "+(MMV?"res_multistep is the MiniMax H3 sampler.":"euler is safe for every video model here."),setv("smp",(EDEF[VE]||{}).smp||"euler"));}
                {const sc0=$("sch").value;chk(!/^(karras|exponential|ddim_uniform)$/.test(sc0),"Video scheduler "+sc0+".","warn","Video scheduler '"+sc0+"' is made for older (noise-prediction) models; "+VEN+" is a flow model and loses detail or colour with it. Use simple.",setv("sch","simple"));}
@@ -6230,6 +6239,7 @@ three-quarter: three-quarter view from above</textarea>
                const IMGUSED=IE!=="h3"&&((RG&&RL.length>0)||JF||RFI||STB);
                if(IMGUSED){
                 const ib={qwen:{st:40,lo:30,cfg:1,sch:"simple"},flux2:{st:20,lo:16,cfg:4,sch:"flux2"},zimage:{st:8,lo:6,cfg:1,sch:"simple"},moss:{st:30,lo:20,cfg:3,sch:"simple"}}[IE];
+                if((IE==="zimage"||IE==="moss")&&RA.some(r=>r.f)&&(JF||STB))qc("warn",IEN[IE]+" is text only, but "+RA.filter(r=>r.f).length+" reference(s) have picture files. The pictures never reach the image model (they only steer colour through Scene Anchor), so the people and places will not look like them. Qwen Image 2.1 and Flux 2 take the pictures as inputs.",setv("ie","qwen",true));
                 if(IE!=="qwen")qc("tip",IEN[IE]+" makes the pictures. Qwen Image 2.1 is the tested image model here: it takes up to 16 reference pictures, edits a frame into the next one and restores joins with a second picture.",setv("ie","qwen",true));
                 if(ib){const rs=num("rst",ib.st);chk(rs>=ib.lo,"Image steps "+rs+".","warn","Image steps is "+rs+": "+IEN[IE]+" needs about "+ib.st+" steps for full detail in first frames, story frames and restores.",setv("rst",ib.st));
                  const cf=num("rcfg",ib.cfg);chk(Math.abs(cf-ib.cfg)<=ib.cfg*0.3,"Image CFG "+cf+".","warn","Image CFG is "+cf+": "+IEN[IE]+" is made for "+ib.cfg+"; other values burn the colours or lose the prompt.",setv("rcfg",ib.cfg));
@@ -6331,7 +6341,7 @@ three-quarter: three-quarter view from above</textarea>
              if(SG)W.push("Scene guard is on: every clip is forced to exactly its planned length, checked for sudden scene changes (cut off where they start) and measured for frozen endings and replays; each scene is logged in ComfyUI/output/movie_log.txt"+(NCAND>1?". Each MiniMax scene is rendered "+NCAND+" times and the best try is kept, so rendering takes about "+NCAND+" times longer":"")+". It needs the ripcurlsurf_comfy custom nodes. If the Scene Guard node is showing in red, install them (button under Consistency) or untick Scene guard.");
              if(!LK&&S.length>1&&S.some((s,i)=>i>0&&s.k))W.push("Scene order is not forced: scenes that start with a hard cut have nothing linking them to the scene before, so ComfyUI may render them in any order. Tick 'Force scenes to generate strictly in order' to render 1, 2, 3 ...");
              if(LK&&S.length>1)W.push("Order lock: every scene waits for the previous scene to finish (through its first-frame image where it has one, otherwise through a hidden width link from the previous scene's decoded video), so scenes render 1, 2, 3 ... in order.");
-             {const ks=Object.keys(refLog);if(ks.length&&(RM||JF)){const rng=a=>a.length>3?a[0]+"-"+a[a.length-1]+" ("+a.length+" scenes)":a.join(",");W.push("References linked per scene: "+ks.map(k=>"scene "+rng(refLog[k])+" -> reference "+k).join("; ")+". Total references on the page with an image or generation prompt: "+RA.filter(r=>r.node||r.f).length+".");}
+             {const ks=Object.keys(refLog);if(ks.length&&(RM||JF||stUseRef)){const rng=a=>a.length>3?a[0]+"-"+a[a.length-1]+" ("+a.length+" scenes)":a.join(",");W.push("References linked per scene: "+ks.map(k=>"scene "+rng(refLog[k])+" -> reference "+k).join("; ")+". Total references on the page with an image or generation prompt: "+RA.filter(r=>r.node||r.f).length+".");}
               if(AV&&Object.keys(vLog).length&&(RM||JF)){const rng=a=>a.length>3?a[0]+"-"+a[a.length-1]+" ("+a.length+" scenes)":a.join(",");W.push("Camera view linked per scene: "+Object.keys(vLog).map(k=>"scene "+rng(vLog[k])+" -> "+k).join("; ")+".");}
               if(AV&&!RM&&!JF)W.push("Angle images are generated and saved to ComfyUI/output/ref/ but nothing links them in this setup. Use Generate scene first frames (Qwen or Flux 2).");}
              const j0=nid;
@@ -6613,7 +6623,7 @@ three-quarter: three-quarter view from above</textarea>
               ["mode","gff","rs","gp","kf","kfp","jf","jc","jcs","jn","jl"].forEach(id=>{const e=$(id);if(!e)return;const w=e.closest(".cb")||e.parentElement;if(w)w.classList.toggle("stoff",on);});
               const nref=refs().some(r=>r.f||r.d||r.n)&&$("refon").checked;$("stref").disabled=!nref;$("stref").closest(".cb").classList.toggle("stoff",!nref);
               document.querySelectorAll(".sc").forEach(stCard);}{const b=document.getElementById("qlBox");if(b)b.classList.toggle("hid",!$("ql").checked);}const ie0=$("ie").value,d0=IDEF[ie0];if(d0)$("isHint").textContent="Best for "+({qwen:"Qwen Image 2.1",flux2:"Flux 2",zimage:"Z-Image Turbo",moss:"MOSS-Image"})[ie0]+": "+d0[5]+" sampler, "+(d0[6]==="flux2"?"Flux 2 scheduler":d0[6]+" scheduler")+", "+d0[3]+" steps. Changing the image model resets these to its defaults.";applyEngine();applyRes();renderSuggest();$("pfxBox").classList.toggle("hid",!$("pfx").checked);
-            $("ancBox").classList.toggle("hid",!$("anc").checked);const ron=$("refon").checked;if(!ron){$("rang").checked=false;$("rfirst").checked=false;}$("refBox").classList.toggle("hid",!ron);const mmv=$("ve").value==="mm";$("refMode").textContent="References reach the video through each scene's first frame, made by the image engine (Qwen Image 2.1 and Flux 2 take them as inputs). 'Generate scene first frames' is switched on for you, with a new first frame for every scene (re-anchor every 1 scene) and continuity from the previous last frame, so every scene sees the references. A reference with a filename is used as is; one without is generated from its description.";const ra=$("rang").checked&&ron;
+            $("ancBox").classList.toggle("hid",!$("anc").checked);const ron=$("refon").checked;if(!ron){$("rang").checked=false;$("rfirst").checked=false;}$("refBox").classList.toggle("hid",!ron);const mmv=$("ve").value==="mm";$("refMode").textContent=($("stb")&&$("stb").checked?"Story builder is on: references reach the video only through the story pictures (first and last frames) made by the image engine (Qwen Image 2.1 and Flux 2 take them as inputs). A clip without a story first frame starts on the previous clip's video frame and never sees the references; the checks warn when that happens and can add the missing frames. ":"References reach the video through each scene's first frame, made by the image engine (Qwen Image 2.1 and Flux 2 take them as inputs). ")+"'Generate scene first frames' is switched on for you, with a new first frame for every scene (re-anchor every 1 scene) and continuity from the previous last frame, so every scene sees the references. A reference with a filename is used as is; one without is generated from its description.";const ra=$("rang").checked&&ron;
              {const a0=$("aeng").value,ie=$("ie").value,edit=ie==="qwen"||ie==="flux2",nm={qwen:"Qwen Image 2.1",flux2:"Flux 2",zimage:"Z-Image Turbo",moss:"MOSS-Image",h3:"MiniMax H3 stills"}[ie],vid=$("ve").value==="mm"?"MiniMax":"the Wan / LTX video model";let eff=a0;if(eff==="h3")eff=edit?"img":"manual";if(eff==="img"&&!edit)eff="manual";
               const n=refs().filter(r=>r.x&&(r.f||r.d||r.n)).length;
               $("rangStat").textContent=(!edit)?"What will happen: nothing usable. "+nm+" cannot take pictures, and the video model only receives references and angles through first frames made by Qwen Image 2.1 or Flux 2. Pick one of those as the image model.":eff==="img"?"What will happen: "+nm+" makes the angle pictures from each original reference ("+n+" reference"+(n===1?"":"s")+" with extra angles ticked). Every scene then gets the original plus the angle that matches its camera view, through its generated first frame.":"What will happen: nothing is generated. 'Load Image (optional)' nodes are added for each angle; add the files to ComfyUI/input, until then the original reference stands in."+(a0==="img"?" ("+nm+" cannot take an input picture, so it cannot generate angles.)":"");}$("rangBox").classList.toggle("hid",!ra);document.querySelectorAll(".rxw").forEach(e=>e.classList.toggle("hid",!ron));{const bk=ron&&[...document.querySelectorAll(".rbk")].some(x=>x.checked);document.querySelectorAll(".rvw").forEach(e=>e.classList.toggle("hid",!(ra||bk)));}document.querySelectorAll(".rlw").forEach(e=>e.classList.toggle("hid",!ron||$("rlink").value!=="list"));$("refHint").textContent="";document.body.classList.toggle("kon",$("kf").checked||$("aud").checked||$("ext").checked);$("bPlan").style.display=$("bFF").style.display=$("exp").checked?"":"none";}
@@ -6722,6 +6732,10 @@ three-quarter: three-quarter view from above</textarea>
             $("bRefRm").onclick=()=>{const c=document.querySelectorAll(".rc");if(c.length>0){c[c.length-1].remove();refresh();}};
             $("refon").addEventListener("change",refresh);
             $("stb").addEventListener("change",refresh);
+            function stCoverAll(){const cs=[...document.querySelectorAll(".sc")];let nf=0,nl=0;cs.forEach((c,j)=>{const hard=j===0||!!(c.querySelector(".ssc")&&c.querySelector(".ssc").value==="hard")||(!c.querySelector(".ssc").value&&$("dsc2")&&$("dsc2").value==="hard"),nx=cs[j+1];
+             if(hard&&!c.querySelector(".sff").checked){c.querySelector(".sff").checked=true;nf++;}
+             const nxHard=nx&&(nx.querySelector(".ssc").value==="hard"||(!nx.querySelector(".ssc").value&&$("dsc2")&&$("dsc2").value==="hard"));
+             if(nx&&!nxHard&&c.querySelector(".slf").value!=="new"){c.querySelector(".slf").value="new";nl++;}});return [nf,nl];}
             $("stAll").onclick=()=>{document.querySelectorAll(".sc").forEach(c=>{c.querySelector(".sff").checked=true;c.querySelector(".slf").value="new";});refresh();};
             $("stDlg").onclick=()=>{let n=0;document.querySelectorAll(".sc").forEach(c=>{if(c.querySelector(".sdl").value.trim()){c.querySelector(".slf").value="off";c.querySelector(".sff").checked=true;n++;}});refresh();$("genMsg").textContent=n?n+" dialogue scene(s) now start on a first frame and end freely (no last frame), so the talking moves naturally.":"No scene has dialogue.";};
             $("stClr").onclick=()=>{if(!confirm("Remove every story tick and description from all scenes?"))return;document.querySelectorAll(".sc").forEach(c=>{c.querySelector(".sff").checked=false;c.querySelector(".slf").value="off";c.querySelector(".sffd").value="";c.querySelector(".slfd").value="";});refresh();};
@@ -6754,7 +6768,7 @@ three-quarter: three-quarter view from above</textarea>
              if(fam==="mm")E.push(["res","Resolution",w+"x"+h]);else{E.push(["w","Width",w]);E.push(["h","Height",h]);}
              E.push(["turbo","Turbo 4-step mode",turbo]);E.push(["lora","LoRA enabled",turbo]);
              E.push(["steps","Steps",turbo?(fam==="ltx"?8:4):(goal==="quality"?30:goal==="long"?24:20)]);
-             if(fam==="mm"){E.push(["ec","EasyCache",goal==="preview"]);E.push(["sage","Sage Attention",true]);}
+             if(fam==="mm"){E.push(["ec","EasyCache",goal==="preview"]);}
              E.push(["nj","Skip in-graph join",nj]);E.push(["sg","Subgraph packing",n>6]);E.push(["lk","Force scene order",true]);
              E.push(["jf","Generate scene first frames",chain]);
              if(chain){E.push(["jn","Re-anchor every N scenes",goal==="long"?(t>=3?2:3):3]);E.push(["kw","First-frame width",w]);E.push(["kh","First-frame height",h]);}
@@ -6763,6 +6777,9 @@ three-quarter: three-quarter view from above</textarea>
              E.push(["rfu","Upscale round trip on chained frames",chain&&t<=1&&!(imgOk&&t>=2)]);
              E.push(["up","Upscale video",goal==="quality"&&t>=2&&nj]);
              if(imgOk){const st={qwen:{preview:20,balanced:28,quality:40,long:36},flux2:{preview:16,balanced:20,quality:28,long:24},zimage:{preview:6,balanced:8,quality:9,long:8},moss:{preview:15,balanced:25,quality:40,long:30}}[ie];if(st)E.push(["rst","Image steps",st[goal]]);}
+             if(fam==="mm"){const tries=goal==="preview"?1:goal==="balanced"?1:2;E.push(["sgc","Scene guard tries",tries]);
+              if(vram<=36)N.push("MiniMax H3 (34 GB as int8) is larger than "+vram+" GB of VRAM: part of the model streams from RAM on every step, about 13-19 s per step at 864x480 on a 32 GB card. Every Scene guard try renders the whole clip again, and CFG above 1 runs two passes per step, so a 10 s scene costs roughly tries x steps x 15 s. A smaller quantised file (nvfp4) that fits in VRAM, fewer tries, or Turbo 4-step mode are the big levers; resolution and steps are the small ones.");}
+             N.push("ComfyUI launch flags (Comfy Desktop: the install's Settings > launch arguments): leave the VRAM mode on its default - no --highvram, --normalvram or --lowvram unless memory actually runs out. The default dynamic VRAM management gives the running model the whole card; --highvram pins every loaded model in VRAM, and as soon as a workflow's models add up to more than the card holds, Windows pages GPU memory to system RAM and every step runs 10-30x slower (measured 24 Oct 2026 on a 32 GB RTX 5090: MOSS-Image 1.4 s per step by default, 30 s per step with --highvram). --force-fp16 is not needed on RTX 30/40/50 (bf16 is native) and can overflow with bf16 models. --fast is fine. Prefer int8 / nvfp4 text encoders over bf16 ones when the bf16 file is bigger than your VRAM: a 51 GB encoder is loaded through RAM at every prompt.");
              if(t<=1)N.push("Under 16 GB VRAM: use the int8 / fp8 / nvfp4 quantised model files, close other GPU apps, and try ComfyUI's --lowvram if you run out of memory.");
              if(vram<16&&(ie==="qwen"||ie==="flux2"))N.push("Z-Image Turbo is the lightest image model and suits "+vram+" GB VRAM better than "+(ie==="qwen"?"Qwen Image 2.1":"Flux 2")+".");
              if(vram>=24&&(ie==="zimage"||ie==="moss")&&(goal==="quality"||goal==="long"))N.push("Qwen Image 2.1 or Flux 2 follow reference images better than "+(ie==="moss"?"MOSS-Image":"Z-Image Turbo")+", which only uses text. Better for long films.");
@@ -6800,7 +6817,8 @@ three-quarter: three-quarter view from above</textarea>
               bake_enabled:!!r.bk}));
              const sc=scenes().map(x=>({prompt:x.p,duration_s:x.d>0?x.d:(+$("dd").value||15),first_frame:x.f,last_frame:x.l,hard_cut:x.k,scene_change:x.sc||"",long_scene:x.lm||"",dialogue:sp(x.dl),sound:x.sn,camera_view:x.v,baked_shot:x.bs||"",references:x.rr,seed:x.s===""?null:Number(x.s),use_take:x.tk===""?null:Number(x.tk),story_first:!!x.sff,story_first_text:x.sffd,story_last:x.slf||"off",story_last_text:x.slfd}));
              return {_instructions:[
-             "HOW TO USE: fill in this JSON template and return ONLY the completed JSON (no commentary, no markdown). Keep every key and the exact structure; do not rename keys. Keys starting with _ are ignored.",
+             "HOW TO USE: fill in this JSON template and return ONLY the completed JSON (no commentary, no markdown, no ``` fences). Keep every key and the exact structure; do not rename keys. Keys starting with _ are ignored.",
+             "STRICT JSON: the file is read by a program, not a person. Straight double quotes only (no curly quotes); an empty value is two quotes \"\" (never one); no line breaks inside a text value - write \\n instead, or split dialogue into array items; a quote inside a text needs a backslash (\\\"); no trailing comma before ] or }; no comments; numbers and true/false without quotes. Before answering, check that every { [ and \" is closed. If your output is long, do not shorten or elide anything with ... : every scene must be complete.",
              "story_brief is the premise or long prompt written by the user. Expand it into a full scene list. target_runtime_minutes: make the sum of all scene duration_s match it.",
              "SCENE RULE: if the user wrote a script or scene list, keep it exactly: one scene per script scene, in the same order. Do not invent, add, split, merge or reorder scenes, and do not add characters, locations or events that are not in the script. Only expand a scene into more scenes when story_brief is a short premise with no scenes. Each scene prompt must name every character in it exactly as in character_bible, state the location, and describe the action beat by beat for the whole duration (about 2 to 3 words per second), so the video model has nothing left to invent. Keep clips short, 4 to 8 seconds where possible.",
              "scenes: one object per continuous clip, in story order. prompt = what is seen plus camera movement, present tense, concrete visual detail. Use character and location names exactly as in reference_images[].name so they stay consistent. Do not put dialogue in prompt.",
@@ -6835,14 +6853,22 @@ three-quarter: three-quarter view from above</textarea>
              const tryParse=()=>{try{return JSON.parse(u);}catch(e){return null;}};
              let d=tryParse();if(d)fixed.push("the instructions at the top of the file were damaged and were left out (they are not needed to load)");
              /* 2. curly quotes used as JSON quotes, trailing commas */
-             if(!d){const v=u.replace(/[\u201c\u201d](\s*[:,\]}])/g,'"$1').replace(/([{\[,:]\s*)[\u201c\u201d]/g,'$1"').replace(/,(\s*[\]}])/g,"$1");if(v!==u){u=v;fixed.push("curly quotes or trailing commas were corrected");d=tryParse();}}
+             if(!d){const v=u.replace(/[\u201c\u201d](\s*[:,\]}])/g,'"$1').replace(/([{\[,:]\s*)[\u201c\u201d]/g,'$1"').replace(/,(\s*,)+/g,",").replace(/,(\s*[\]}])/g,"$1");if(v!==u){u=v;fixed.push("curly quotes or doubled/trailing commas were corrected");d=tryParse();}}
+             /* 2b. an empty value written with one quote:  "key":",  or  "key":"}  (the AI dropped a quote) */
+             if(!d){const v=u.replace(/(:\s*)"\s*,(\s*\r?\n\s*")/g,'$1"",$2').replace(/(:\s*)"(\s*\r?\n\s*[}\]])/g,'$1""$2');if(v!==u){u=v;fixed.push("an empty value that had only one quote was closed");d=tryParse();}}
+             /* 2c. raw line breaks or tabs inside a text value (JSON needs \n and \t): escape them, walking the text as a JSON scanner would */
+             if(!d){let o="",ins=false,escp=false,n=0;for(let k=0;k<u.length;k++){const c=u[k];
+               if(ins){if(escp){escp=false;o+=c;continue;}if(c==="\\"){escp=true;o+=c;continue;}if(c==='"'){ins=false;o+=c;continue;}
+                if(c==="\n"){o+="\\n";n++;continue;}if(c==="\r"){continue;}if(c==="\t"){o+="\\t";n++;continue;}if(c<" "){n++;continue;}o+=c;continue;}
+               if(c==='"')ins=true;o+=c;}
+              if(n){u=o;fixed.push(n+" line break(s) or tab(s) inside text values were escaped");d=tryParse();}}
              /* 3. stray quotes inside a text value: re-escape every quote between the value's own opening and closing quote */
              if(!d){let n=0;const esc=x=>x.replace(/\\"/g,"\u0000").replace(/"/g,'\\"').replace(/\u0000/g,'\\"');
               u=u.split("\n").map((ln,k)=>{let m=ln.match(/^(\s*"[^"\\]*"\s*:\s*")(.*)("\s*,?\s*)$/)||ln.match(/^(\s*")(.*)("\s*,?\s*)$/);
                if(!m)return ln;const r=m[1]+esc(m[2])+m[3];if(r!==ln){n++;if(n<=5)fixed.push("line "+(k+1)+": a quote inside a text was escaped");}return r;}).join("\n");
               d=tryParse();}
              if(!d){const pos=+((/position (\d+)/.exec(first.message)||[])[1]);
-              throw new Error(first.message+(isFinite(pos)?". Near: \u00ab"+t.slice(Math.max(0,pos-60),pos).replace(/\s+/g," ")+" \u25b6 "+t.slice(pos,pos+40).replace(/\s+/g," ")+"\u00bb":"")+". Open the file in a text editor and fix that spot (every text must be in straight double quotes, and a quote inside a text needs a backslash before it), or send the file for help.");}
+              throw new Error(first.message+(isFinite(pos)?". Near: \u00ab"+t.slice(Math.max(0,pos-60),pos).replace(/\s+/g," ")+" \u25b6 "+t.slice(pos,pos+40).replace(/\s+/g," ")+"\u00bb":"")+". Open the file in a text editor and fix that spot. The usual causes in AI-written files: an empty value written as one quote instead of two (\"\"), a line break inside a text (write \\n), a quote inside a text without a backslash, a missing comma between two values, or the answer cut off before the end (the file does not end with }). Ask the AI to return the complete, valid JSON again, or send the file for help.");}
              return {d:d,fixed:fixed};}
             function tplLoad(txt){
              const P=projParse(txt),d=P.d,warn=[];
