@@ -7,6 +7,7 @@ Install: the folder must end up exactly as
     ComfyUI/custom_nodes/ripcurlsurf_comfy/qualitylock.py
     ComfyUI/custom_nodes/ripcurlsurf_comfy/storykeys.py
     ComfyUI/custom_nodes/ripcurlsurf_comfy/troubleshoot.py
+    ComfyUI/custom_nodes/ripcurlsurf_comfy/resume.py
 (not a folder inside a folder), then restart ComfyUI. Look in the ComfyUI console for the
 line  [ripcurlsurf_comfy] loaded ...  - if a module fails, the reason is printed there.
 Nodes:
@@ -22,17 +23,17 @@ Nodes:
   Story Keyframe (first or last frame of a scene, saved)  video/ripcurlsurf
   Troubleshooting Log (one clip, for finding problems)    video/ripcurlsurf
 Every node writes to one log file, ComfyUI/output/movie_log.txt, in the order things happen.
-Version 2026.10.20.1 - the console line below shows the version and every node that loaded.
+Version 2026.11.08.1 - the console line below shows the version and every node that loaded.
 """
 import importlib
 import traceback
 
-VERSION = "2026.10.20.1"
+VERSION = "2026.11.08.1"
 
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-for _mod in ("refimagetools", "sceneguard", "qualitylock", "storykeys", "troubleshoot"):
+for _mod in ("refimagetools", "sceneguard", "qualitylock", "storykeys", "troubleshoot", "resume"):
     try:
         _m = importlib.import_module("." + _mod, __name__)
         NODE_CLASS_MAPPINGS.update(_m.NODE_CLASS_MAPPINGS)
